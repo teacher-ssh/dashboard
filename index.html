@@ -301,6 +301,10 @@
   .modal h2 { margin: 0 0 4px; font-size: 18px; letter-spacing: -0.3px; }
   .modal .meta { font-size: 13px; color: var(--sub); margin-bottom: 14px; }
   .modal .content { white-space: pre-wrap; word-break: break-word; font-size: 15px; background: var(--line-soft); border-radius: 10px; padding: 12px 14px; min-height: 48px; }
+  .modal .content a { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+  .modal .content a:hover { color: var(--accent); }
+  .modal .content a::before { content: "🔗 "; text-decoration: none; display: inline-block; margin-right: 2px; }
+  .link-mark { font-size: 12px; color: var(--faint); font-weight: 400; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
   .modal-actions .left { margin-right: auto; display: flex; gap: 8px; }
   .form-row { margin-bottom: 12px; }
@@ -490,6 +494,21 @@ const pad = (n) => String(n).padStart(2, '0');
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+// 글 속의 http/https 주소를 새 탭에서 열리는 링크로 바꿈 (먼저 HTML 이스케이프 후 처리)
+const URL_RE = /https?:\/\/[^\s<>"']+/g;
+function hasUrl(text) { URL_RE.lastIndex = 0; return URL_RE.test(String(text || '')); }
+function linkify(text) {
+  return esc(text).replace(/https?:\/\/[^\s<>"']+/g, (raw) => {
+    let url = raw;
+    let tail = '';
+    // 문장 끝 문장부호는 링크에서 제외
+    while (/[.,;:!?)\]}]$/.test(url)) { tail = url.slice(-1) + tail; url = url.slice(0, -1); }
+    const plain = url.replace(/&amp;/g, '&');
+    const shown = plain.length > 70 ? plain.slice(0, 45) + '…' + plain.slice(-18) : plain;
+    return '<a href="' + url + '" target="_blank" rel="noopener" title="' + url + '">' + esc(shown) + '</a>' + tail;
+  });
+}
 
 function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
 function parseYmd(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
@@ -841,6 +860,7 @@ function noticeItemHtml(n, showDday) {
         (n.important ? '<span class="tag imp">중요</span>' : '') +
         (n.category ? '<span class="tag">' + esc(n.category) + '</span>' : '') +
         '<span class="tt">' + esc(n.title) + '</span>' +
+        (hasUrl(n.content) ? '<span class="link-mark" title="링크 포함">🔗</span>' : '') +
       '</div>' +
       '<div class="notice-meta">' + rangeText(n) + ' · ' + esc(n.author) + '</div>' +
     '</div></li>';
@@ -936,7 +956,7 @@ function openDetail(id) {
     '</div>' +
     '<h2>' + esc(n.title) + '</h2>' +
     '<div class="meta">' + rangeText(n) + ' · 작성 ' + esc(n.author) + (n.createdAt ? ' · ' + esc(n.createdAt.slice(0, 16)) : '') + '</div>' +
-    '<div class="content">' + (n.content ? esc(n.content) : '<span style="color:var(--faint)">내용 없음</span>') + '</div>' +
+    '<div class="content">' + (n.content ? linkify(n.content) : '<span style="color:var(--faint)">내용 없음</span>') + '</div>' +
     '<div class="modal-actions">' +
       (mine ? '<div class="left"><button class="btn" id="mEdit" type="button">수정</button><button class="btn btn-danger" id="mDel" type="button">삭제</button></div>' : '') +
       '<button class="btn" id="mClose" type="button">닫기</button>' +
