@@ -1311,10 +1311,6 @@ $('#calGrid').addEventListener('click', (ev) => {
   });
 });
 
-$('#todayList').addEventListener('click', (ev) => {
-  const li = ev.target.closest('li.clickable');
-  if (li) openClassModal(li.dataset.cls, todayStr(), li.dataset.period);
-});
 
 $('#weekTable').addEventListener('click', (ev) => {
   const td = ev.target.closest('td.clickable');
