@@ -210,6 +210,12 @@
   table.week td.today.cls { color: var(--accent-text); }
   table.week tr:last-child td.today { border-radius: 0 0 8px 8px; }
   table.week td.done { opacity: .55; }
+  table.week tr.breakrow td {
+    background: #fbfcfd; color: var(--sub); font-size: 12px;
+    text-align: center; letter-spacing: 1px; padding: 6px 4px;
+  }
+  table.week tr.breakrow.nowbreak td { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+  table.week tr.breakrow td.pcol { letter-spacing: 0; }
   table.week td.nowcell { background: var(--accent-soft); color: var(--accent-text); border-radius: 6px; font-weight: 700; }
   table.week td.clickable { cursor: pointer; }
   table.week td.clickable:hover { background: var(--line-soft); }
@@ -744,11 +750,18 @@ function periods() {
   return (state.data.periods || []).filter(p => p.start && p.end);
 }
 
+function breaks() {
+  return (state.data.breaks || []).filter(b => b.start && b.end);
+}
+
 function currentPeriodInfo() {
   const nowMin = toMin(hm(new Date()));
   const list = periods();
   for (const p of list) {
     if (nowMin >= toMin(p.start) && nowMin < toMin(p.end)) return { type: 'in', period: p };
+  }
+  for (const b of breaks()) {
+    if (nowMin >= toMin(b.start) && nowMin < toMin(b.end)) return { type: 'break', item: b };
   }
   const next = list.find(p => toMin(p.start) > nowMin);
   if (next) return { type: 'before', period: next };
@@ -786,6 +799,13 @@ function renderToday() {
     } else {
       html = freeBox('지금 ' + info.period.period + '교시', '수업 없음', nextClassText(day, nowMin));
     }
+  } else if (info.type === 'break') {
+    const nxt = nextClass(day, nowMin);
+    const left = toMin(info.item.end) - nowMin;
+    html = '<div class="now-box"><div class="now-label">지금</div>' +
+      '<div class="now-main">' + esc(info.item.label) + '</div>' +
+      '<div class="now-desc">' + info.item.end + '까지 · ' + formatMins(left) + ' 남음' +
+      (nxt ? ' · 다음 수업 ' + nxt.period + '교시 ' + esc(nxt.cls) : '') + '</div></div>';
   } else if (info.type === 'before') {
     const nxt = nextClass(day, nowMin);
     if (nxt) {
@@ -852,7 +872,7 @@ function renderWeek() {
     warn.innerHTML = '';
   }
 
-  let html = '<thead><tr><th class="pcol"></th>';
+  let html = '<thead><tr><th class="pcol">시간/요일</th>';
   DAYS.forEach((day, i) => {
     const label = week ? day + '<br><span style="font-weight:400;color:var(--faint)">' + dayNum(week, i) + '</span>' : day;
     html += '<th class="' + (i === todayCol ? 'today' : '') + '">' + label + '</th>';
@@ -863,11 +883,30 @@ function renderWeek() {
   const nowMin = toMin(hm(d));
   const today = todayStr();
 
+  const pending = breaks().slice().sort((a, b) => toMin(a.start) - toMin(b.start));
+
+  // 일과전
+  const firstP = plist.find(x => x.start);
+  const lastP = plist.slice().reverse().find(x => x.end);
+  const beforeSchool = todayCol >= 0 && firstP && nowMin < toMin(firstP.start);
+  html += '<tr class="breakrow' + (beforeSchool ? ' nowbreak' : '') + '">' +
+    '<td class="pcol">일과전</td><td colspan="5">일과전</td></tr>';
+
   for (let p = 1; p <= 7; p++) {
     const pi = plist.find(x => x.period === p) || { start: '', end: '' };
+
+    // 이 교시 시작 전에 들어가는 점심시간 등
+    while (pending.length && pi.start && toMin(pending[0].start) < toMin(pi.start)) {
+      const b = pending.shift();
+      const isNowBreak = info.type === 'break' && info.item.label === b.label;
+      html += '<tr class="breakrow' + (isNowBreak ? ' nowbreak' : '') + '">' +
+        '<td class="pcol">' + esc(b.label) + '<span class="ptime">(' + b.start + '~' + b.end + ')</span></td>' +
+        '<td colspan="5">' + esc(b.label) + '</td></tr>';
+    }
+
     const isNowRow = info.type === 'in' && info.period.period === p;
     html += '<tr class="' + (isNowRow ? 'nowrow' : '') + '"><td class="pcol">' + p + '교시' +
-      (pi.start ? '<span class="ptime">' + pi.start + '~' + pi.end + '</span>' : '') + '</td>';
+      (pi.start ? '<span class="ptime">(' + pi.start + '~' + pi.end + ')</span>' : '') + '</td>';
     DAYS.forEach((day, i) => {
       const key = day + p;
       const cls = (tt[key] || '').trim();
@@ -894,6 +933,20 @@ function renderWeek() {
     });
     html += '</tr>';
   }
+
+  // 마지막 교시 뒤에 오는 항목(청소, 종례 등)
+  pending.forEach(b => {
+    const isNowBreak = info.type === 'break' && info.item.label === b.label;
+    html += '<tr class="breakrow' + (isNowBreak ? ' nowbreak' : '') + '">' +
+      '<td class="pcol">' + esc(b.label) + '<span class="ptime">(' + b.start + '~' + b.end + ')</span></td>' +
+      '<td colspan="5">' + esc(b.label) + '</td></tr>';
+  });
+
+  // 방과후
+  const afterSchool = todayCol >= 0 && lastP && nowMin >= toMin(lastP.end);
+  html += '<tr class="breakrow' + (afterSchool ? ' nowbreak' : '') + '">' +
+    '<td class="pcol">방과후</td><td colspan="5">방과후</td></tr>';
+
   html += '</tbody>';
   $('#weekTable').innerHTML = html;
 
@@ -997,24 +1050,27 @@ function openClassModal(cls, date, period, focusId) {
   });
 
   if (existing) {
-    const del = $('#rDel');
-    del.onclick = async () => {
-      if (!del.classList.contains('confirm')) {
-        del.classList.add('confirm');
-        del.textContent = '정말 삭제';
-        return;
-      }
-      del.disabled = true;
-      try {
-        const j = await api('deleteRecord', { key: state.key, id: existing.id });
-        state.data.records = j.records;
-        renderAll();
-        openClassModal(cls, base.date, base.period);
-        toast('기록을 지웠습니다.');
-      } catch (e) {
-        handleActionError(e);
-        del.disabled = false;
-      }
+    $('#rDel').onclick = () => {
+      const box = $('#rActions');
+      box.innerHTML = '<span class="card-sub" style="margin-right:auto">' +
+        shortDate(existing.date) + ' ' + esc(existing.period) + '교시 기록을 지울까요?</span>' +
+        '<button class="btn" id="rDelNo" type="button">취소</button>' +
+        '<button class="btn btn-danger confirm" id="rDelYes" type="button">삭제</button>';
+
+      $('#rDelNo').onclick = () => openClassModal(cls, base.date, base.period, existing.id);
+      $('#rDelYes').onclick = async () => {
+        $('#rDelYes').disabled = true;
+        try {
+          const j = await api('deleteRecord', { key: state.key, id: existing.id });
+          state.data.records = j.records;
+          closeModal();
+          renderAll();
+          toast('기록을 지웠습니다.');
+        } catch (e) {
+          handleActionError(e);
+          openClassModal(cls, base.date, base.period, existing.id);
+        }
+      };
     };
   }
 
@@ -1039,8 +1095,8 @@ function openClassModal(cls, date, period, focusId) {
     try {
       const j = await api('saveRecord', { key: state.key, record: rec });
       state.data.records = j.records;
+      closeModal();
       renderAll();
-      openClassModal(cls, rec.date, rec.period);
       toast(j.message || '기록을 저장했습니다.');
     } catch (e) {
       if (AUTH_ERRORS.indexOf(e.code) >= 0) { handleActionError(e); return; }
