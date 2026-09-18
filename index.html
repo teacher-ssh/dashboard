@@ -859,24 +859,35 @@ function renderWeek() {
   });
   html += '</tr></thead><tbody>';
 
+  const plist = state.data.periods || [];
+  const nowMin = toMin(hm(d));
+  const today = todayStr();
+
   for (let p = 1; p <= 7; p++) {
-    html += '<tr><td class="pcol">' + p + '</td>';
+    const pi = plist.find(x => x.period === p) || { start: '', end: '' };
+    const isNowRow = info.type === 'in' && info.period.period === p;
+    html += '<tr class="' + (isNowRow ? 'nowrow' : '') + '"><td class="pcol">' + p +
+      (pi.start ? '<span class="ptime">' + pi.start + '</span>' : '') + '</td>';
     DAYS.forEach((day, i) => {
       const key = day + p;
       const cls = (tt[key] || '').trim();
       const before = (prev[key] || '').trim();
       const changed = hasPrev && cls !== before;
       if (changed) changedCount++;
+      const isToday = i === todayCol;
       const classes = ['cls'];
       if (cls) { classes.push('filled', 'clickable'); }
-      if (i === todayCol) classes.push('today');
+      if (isToday) classes.push('today');
+      if (isToday && pi.end && nowMin >= toMin(pi.end)) classes.push('done');
       if (changed) classes.push('changed');
-      if (i === todayCol && info.type === 'in' && info.period.period === p) classes.push('nowcell');
+      if (isToday && isNowRow) classes.push('nowcell');
       const prog = cls ? latestProgress(cls) : '';
+      const rec = (cls && isToday) ? findRecord(cls, today, p) : null;
       html += '<td class="' + classes.join(' ') + '"' +
         (cls ? ' data-cls="' + esc(cls) + '" data-day="' + i + '" data-period="' + p + '"' : '') +
         (changed ? ' title="지난주: ' + esc(before || '없음') + '"' : '') + '>' +
         (cls ? esc(cls) : '') +
+        (rec ? '<span class="rec-done" title="기록함">✓</span>' : '') +
         (changed ? '<span class="chg">변경</span>' : '') +
         (prog ? '<span class="wprog">' + esc(prog) + '</span>' : '') +
         '</td>';
@@ -1310,7 +1321,6 @@ $('#calGrid').addEventListener('click', (ev) => {
     if (item) openDetail(item.dataset.id);
   });
 });
-
 
 $('#weekTable').addEventListener('click', (ev) => {
   const td = ev.target.closest('td.clickable');
