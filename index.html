@@ -890,7 +890,7 @@ function renderWeek() {
   const lastP = plist.slice().reverse().find(x => x.end);
   const beforeSchool = todayCol >= 0 && firstP && nowMin < toMin(firstP.start);
   html += '<tr class="breakrow' + (beforeSchool ? ' nowbreak' : '') + '">' +
-    '<td class="pcol">일과전</td><td colspan="5">일과전</td></tr>';
+    '<td class="pcol">일과전</td><td colspan="5"></td></tr>';
 
   for (let p = 1; p <= 7; p++) {
     const pi = plist.find(x => x.period === p) || { start: '', end: '' };
@@ -901,7 +901,7 @@ function renderWeek() {
       const isNowBreak = info.type === 'break' && info.item.label === b.label;
       html += '<tr class="breakrow' + (isNowBreak ? ' nowbreak' : '') + '">' +
         '<td class="pcol">' + esc(b.label) + '<span class="ptime">(' + b.start + '~' + b.end + ')</span></td>' +
-        '<td colspan="5">' + esc(b.label) + '</td></tr>';
+        '<td colspan="5"></td></tr>';
     }
 
     const isNowRow = info.type === 'in' && info.period.period === p;
@@ -939,13 +939,13 @@ function renderWeek() {
     const isNowBreak = info.type === 'break' && info.item.label === b.label;
     html += '<tr class="breakrow' + (isNowBreak ? ' nowbreak' : '') + '">' +
       '<td class="pcol">' + esc(b.label) + '<span class="ptime">(' + b.start + '~' + b.end + ')</span></td>' +
-      '<td colspan="5">' + esc(b.label) + '</td></tr>';
+      '<td colspan="5"></td></tr>';
   });
 
   // 방과후
   const afterSchool = todayCol >= 0 && lastP && nowMin >= toMin(lastP.end);
   html += '<tr class="breakrow' + (afterSchool ? ' nowbreak' : '') + '">' +
-    '<td class="pcol">방과후</td><td colspan="5">방과후</td></tr>';
+    '<td class="pcol">방과후</td><td colspan="5"></td></tr>';
 
   html += '</tbody>';
   $('#weekTable').innerHTML = html;
