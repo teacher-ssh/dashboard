@@ -179,6 +179,14 @@
   }
   .today-list li.now + li { border-top-color: transparent; }
   .today-list li.now .p, .today-list li.now .c { color: var(--accent-text); }
+  .today-list li.clickable { cursor: pointer; }
+  .today-list li.clickable:hover { background: var(--line-soft); border-radius: 9px; }
+  .today-list .c .prog { display: block; font-size: 12px; color: var(--sub); font-weight: 400; margin-top: 1px; }
+  .today-list .c .rec-done { color: var(--green); font-size: 12px; margin-left: 4px; }
+  .tt-note { font-size: 12px; color: var(--faint); margin-top: 10px; }
+  .tt-warn { background: var(--amber-soft); border-radius: 9px; padding: 10px 12px; font-size: 13px; color: #8a6100; margin-bottom: 12px; }
+  .legend { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--sub); }
+  .legend .box { width: 11px; height: 11px; border-radius: 3px; background: var(--amber-soft); border: 1px solid #f0d08a; display: inline-block; }
 
   /* 주간 시간표 */
   .week-wrap { overflow-x: auto; }
@@ -197,6 +205,14 @@
   table.week .today { background: #f8faff; }
   table.week th.today { color: var(--accent-text); }
   table.week td.nowcell { background: var(--accent-soft); color: var(--accent-text); border-radius: 6px; font-weight: 700; }
+  table.week td.clickable { cursor: pointer; }
+  table.week td.clickable:hover { background: var(--line-soft); }
+  table.week td.changed { background: var(--amber-soft); }
+  table.week td .wprog { display: block; font-size: 11px; color: var(--faint); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.week td .chg {
+    font-size: 10px; color: #a06800; background: #fdf0d0;
+    border-radius: 4px; padding: 0 3px; margin-left: 4px; vertical-align: 1px;
+  }
   table.week tr:last-child td { border-bottom: none; }
 
   /* 공지 목록 */
@@ -323,6 +339,17 @@
   .check { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; }
   .check input { width: 16px; height: 16px; accent-color: var(--red); }
   .form-err { color: var(--red); font-size: 13px; min-height: 19px; margin-top: 4px; }
+  .rec-hist { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .rec-hist-title { font-size: 13px; font-weight: 700; color: var(--sub); margin-bottom: 6px; }
+  .rec-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+  .rec-item { display: flex; gap: 10px; padding: 8px 6px; border-top: 1px solid var(--line-soft); cursor: pointer; border-radius: 8px; }
+  .rec-item:first-child { border-top: none; }
+  .rec-item:hover { background: var(--line-soft); }
+  .rec-item.cur { background: var(--accent-soft); }
+  .rec-when { flex-shrink: 0; width: 92px; font-size: 12px; color: var(--sub); font-variant-numeric: tabular-nums; }
+  .rec-prog { font-size: 14px; font-weight: 600; }
+  .rec-memo { font-size: 13px; color: var(--sub); white-space: pre-wrap; word-break: break-word; margin-top: 1px; }
+  .rec-memo a { color: var(--accent-text); }
 
   /* 알림 */
   #toast {
@@ -420,8 +447,11 @@
       <div class="card">
         <div class="card-head">
           <h3 class="card-title">주간 시간표</h3>
+          <span class="card-sub" id="weekInfo"></span>
         </div>
+        <div id="ttWarn"></div>
         <div class="week-wrap"><table class="week" id="weekTable"></table></div>
+        <div class="tt-note" id="ttNote"></div>
       </div>
     </div>
 
@@ -774,14 +804,23 @@ function renderToday() {
   box.innerHTML = html;
 
   // 교시 목록
+  const today = todayStr();
   ul.innerHTML = list.map(p => {
     const cls = (tt[day + p.period] || '').trim();
-    let st = '';
-    if (nowMin >= toMin(p.end)) st = 'done';
-    if (info.type === 'in' && info.period.period === p.period) st = 'now';
-    return '<li class="' + st + '"><span class="p">' + p.period + '교시</span>' +
+    const st = [];
+    if (nowMin >= toMin(p.end)) st.push('done');
+    if (info.type === 'in' && info.period.period === p.period) st.push('now');
+    if (cls) st.push('clickable');
+    const prog = cls ? latestProgress(cls) : '';
+    const rec = cls ? findRecord(cls, today, p.period) : null;
+    return '<li class="' + st.join(' ') + '"' +
+      (cls ? ' data-cls="' + esc(cls) + '" data-period="' + p.period + '"' : '') + '>' +
+      '<span class="p">' + p.period + '교시</span>' +
       '<span class="t">' + p.start + '~' + p.end + '</span>' +
-      '<span class="c' + (cls ? '' : ' empty') + '">' + (cls ? esc(cls) : '—') + '</span></li>';
+      '<span class="c' + (cls ? '' : ' empty') + '">' + (cls ? esc(cls) : '—') +
+        (rec ? '<span class="rec-done" title="오늘 기록함">✓</span>' : '') +
+        (prog ? '<span class="prog">' + esc(prog) + '</span>' : '') +
+      '</span></li>';
   }).join('');
 }
 
@@ -812,30 +851,213 @@ function formatMins(m) {
 
 function renderWeek() {
   const tt = state.data.timetable || {};
+  const prev = state.data.prevTimetable || {};
+  const hasPrev = Object.keys(prev).length > 0;
   const d = new Date();
   const dow = d.getDay();
   const todayCol = (dow >= 1 && dow <= 5) ? dow - 1 : -1;
   const info = currentPeriodInfo();
-  const plist = state.data.periods || [];
+  const week = state.data.timetableWeek || '';
+  let changedCount = 0;
+
+  // 카드 머리말: 시간표 기준 주
+  $('#weekInfo').textContent = week ? shortDate(week) + ' 주' : '';
+
+  // 안내 문구
+  const warn = $('#ttWarn');
+  if (state.data.timetableFound === false) {
+    warn.innerHTML = '<div class="tt-warn">시간표에서 <b>' + esc(state.data.me.name) +
+      '</b> 선생님을 찾지 못했습니다. 교직원 명단의 이름과 컴시간 이름이 같은지 담당자에게 확인해 주세요.</div>';
+  } else {
+    warn.innerHTML = '';
+  }
 
   let html = '<thead><tr><th class="pcol"></th>';
-  DAYS.forEach((day, i) => { html += '<th class="' + (i === todayCol ? 'today' : '') + '">' + day + '</th>'; });
+  DAYS.forEach((day, i) => {
+    const label = week ? day + '<br><span style="font-weight:400;color:var(--faint)">' + dayNum(week, i) + '</span>' : day;
+    html += '<th class="' + (i === todayCol ? 'today' : '') + '">' + label + '</th>';
+  });
   html += '</tr></thead><tbody>';
 
   for (let p = 1; p <= 7; p++) {
     html += '<tr><td class="pcol">' + p + '</td>';
     DAYS.forEach((day, i) => {
-      const cls = (tt[day + p] || '').trim();
+      const key = day + p;
+      const cls = (tt[key] || '').trim();
+      const before = (prev[key] || '').trim();
+      const changed = hasPrev && cls !== before;
+      if (changed) changedCount++;
       const classes = ['cls'];
-      if (cls) classes.push('filled');
+      if (cls) { classes.push('filled', 'clickable'); }
       if (i === todayCol) classes.push('today');
+      if (changed) classes.push('changed');
       if (i === todayCol && info.type === 'in' && info.period.period === p) classes.push('nowcell');
-      html += '<td class="' + classes.join(' ') + '">' + (cls ? esc(cls) : '') + '</td>';
+      const prog = cls ? latestProgress(cls) : '';
+      html += '<td class="' + classes.join(' ') + '"' +
+        (cls ? ' data-cls="' + esc(cls) + '" data-day="' + i + '" data-period="' + p + '"' : '') +
+        (changed ? ' title="지난주: ' + esc(before || '없음') + '"' : '') + '>' +
+        (cls ? esc(cls) : '') +
+        (changed ? '<span class="chg">변경</span>' : '') +
+        (prog ? '<span class="wprog">' + esc(prog) + '</span>' : '') +
+        '</td>';
     });
     html += '</tr>';
   }
   html += '</tbody>';
   $('#weekTable').innerHTML = html;
+
+  const notes = [];
+  if (changedCount) notes.push('<span class="legend"><span class="box"></span> 지난주와 다른 시간 ' + changedCount + '칸</span>');
+  if (state.data.timetableUpdatedAt) notes.push('시간표 갱신: ' + esc(state.data.timetableUpdatedAt.slice(0, 16)));
+  notes.push('칸을 누르면 진도와 수업 기록을 쓸 수 있습니다.');
+  $('#ttNote').innerHTML = notes.join(' · ');
+}
+
+// 주 시작일(월요일)에서 i번째 요일의 날짜 표시 (9/14 형태)
+function dayNum(weekStart, i) {
+  const d = parseYmd(weekStart);
+  d.setDate(d.getDate() + i);
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+/* ── 수업 기록 ── */
+
+function records() { return state.data.records || []; }
+function recordsFor(cls) {
+  return records().filter(r => r.cls === cls)
+    .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : Number(b.period) - Number(a.period)));
+}
+function latestProgress(cls) {
+  const r = recordsFor(cls).find(x => x.progress);
+  return r ? r.progress : '';
+}
+function findRecord(cls, date, period) {
+  return records().find(r => r.cls === cls && r.date === date && String(r.period) === String(period));
+}
+// 이번 주 해당 요일(0=월)의 날짜 — 아직 오지 않았으면 지난주 같은 요일
+function dayDate(dayIdx) {
+  const d = new Date();
+  let diff = d.getDay() - (dayIdx + 1);
+  if (diff < 0) diff += 7;
+  d.setDate(d.getDate() - diff);
+  return ymd(d);
+}
+
+function openClassModal(cls, date, period, focusId) {
+  const existing = focusId ? records().find(r => r.id === focusId) : findRecord(cls, date, period);
+  const base = existing || { date: date, period: String(period), progress: '', memo: '' };
+  const hist = recordsFor(cls);
+  const latest = latestProgress(cls);
+
+  let periodOpts = '';
+  for (let p = 1; p <= 7; p++) {
+    periodOpts += '<option value="' + p + '"' + (String(base.period) === String(p) ? ' selected' : '') + '>' + p + '교시</option>';
+  }
+
+  openModal(
+    '<h2>' + esc(cls) + '</h2>' +
+    '<div class="meta">현재 진도: ' + (latest ? esc(latest) : '기록 없음') + '</div>' +
+    '<form id="rForm" autocomplete="off">' +
+      '<div class="form-2">' +
+        '<div class="form-row"><label for="rDate">날짜</label><input class="input" type="date" id="rDate" value="' + esc(base.date) + '" required></div>' +
+        '<div class="form-row"><label for="rPeriod">교시</label><select class="input" id="rPeriod">' + periodOpts + '</select></div>' +
+      '</div>' +
+      '<div class="form-row"><label for="rProg">진도</label><input class="input" id="rProg" maxlength="100" placeholder="예: Ⅱ-2 뉴턴 제2법칙 p.54" value="' + esc(base.progress) + '"></div>' +
+      '<div class="form-row"><label for="rMemo">메모</label><textarea class="input" id="rMemo" maxlength="2000" placeholder="수업 내용, 과제, 다음 시간 준비물 등">' + esc(base.memo) + '</textarea></div>' +
+      '<div class="form-err" id="rErr"></div>' +
+      '<div class="modal-actions">' +
+        (existing ? '<div class="left"><button class="btn btn-danger" id="rDel" type="button">기록 삭제</button></div>' : '') +
+        '<button class="btn" id="rClose" type="button">닫기</button>' +
+        '<button class="btn btn-primary" id="rSave" type="submit">' + (existing ? '저장' : '기록') + '</button>' +
+      '</div>' +
+    '</form>' +
+    '<div class="rec-hist">' +
+      '<div class="rec-hist-title">지난 기록 ' + hist.length + '건</div>' +
+      (hist.length
+        ? '<ul class="rec-list">' + hist.map(r =>
+            '<li class="rec-item' + (existing && r.id === existing.id ? ' cur' : '') + '" data-id="' + esc(r.id) + '">' +
+              '<div class="rec-when">' + shortDate(r.date) + ' ' + esc(r.period) + '교시</div>' +
+              '<div class="rec-body">' +
+                (r.progress ? '<div class="rec-prog">' + esc(r.progress) + '</div>' : '') +
+                (r.memo ? '<div class="rec-memo">' + linkify(r.memo) + '</div>' : '') +
+              '</div>' +
+            '</li>').join('') + '</ul>'
+        : '<div class="empty-msg">아직 기록이 없습니다.</div>') +
+    '</div>'
+  );
+
+  $('#rClose').onclick = closeModal;
+  $('#rProg').focus();
+
+  // 날짜·교시를 바꿨을 때 그 시간에 기록이 있으면 불러오기
+  const reload = () => {
+    const nd = $('#rDate').value, np = $('#rPeriod').value;
+    const ex = findRecord(cls, nd, np);
+    if (ex && (!existing || ex.id !== existing.id)) openClassModal(cls, nd, np, ex.id);
+  };
+  $('#rDate').addEventListener('change', reload);
+  $('#rPeriod').addEventListener('change', reload);
+
+  $('.rec-list') && $('.rec-list').addEventListener('click', (ev) => {
+    const item = ev.target.closest('.rec-item');
+    if (!item) return;
+    const r = records().find(x => x.id === item.dataset.id);
+    if (r) openClassModal(cls, r.date, r.period, r.id);
+  });
+
+  if (existing) {
+    const del = $('#rDel');
+    del.onclick = async () => {
+      if (!del.classList.contains('confirm')) {
+        del.classList.add('confirm');
+        del.textContent = '정말 삭제';
+        return;
+      }
+      del.disabled = true;
+      try {
+        const j = await api('deleteRecord', { key: state.key, id: existing.id });
+        state.data.records = j.records;
+        renderAll();
+        openClassModal(cls, base.date, base.period);
+        toast('기록을 지웠습니다.');
+      } catch (e) {
+        handleActionError(e);
+        del.disabled = false;
+      }
+    };
+  }
+
+  $('#rForm').onsubmit = async (ev) => {
+    ev.preventDefault();
+    const rec = {
+      id: existing ? existing.id : '',
+      cls: cls,
+      date: $('#rDate').value,
+      period: $('#rPeriod').value,
+      progress: $('#rProg').value.trim(),
+      memo: $('#rMemo').value.trim()
+    };
+    const err = $('#rErr');
+    if (!rec.date) { err.textContent = '날짜를 입력해 주세요.'; return; }
+    if (!rec.progress && !rec.memo) { err.textContent = '진도나 메모를 입력해 주세요.'; return; }
+    err.textContent = '';
+
+    const btn = $('#rSave');
+    btn.disabled = true;
+    btn.textContent = '저장 중…';
+    try {
+      const j = await api('saveRecord', { key: state.key, record: rec });
+      state.data.records = j.records;
+      renderAll();
+      openClassModal(cls, rec.date, rec.period);
+      toast(j.message || '기록을 저장했습니다.');
+    } catch (e) {
+      if (AUTH_ERRORS.indexOf(e.code) >= 0) { handleActionError(e); return; }
+      err.textContent = e.message;
+      btn.disabled = false;
+      btn.textContent = existing ? '저장' : '기록';
+    }
+  };
 }
 
 function notices() { return state.data.notices || []; }
@@ -1107,6 +1329,16 @@ $('#calGrid').addEventListener('click', (ev) => {
     const item = ev.target.closest('.notice-item');
     if (item) openDetail(item.dataset.id);
   });
+});
+
+$('#todayList').addEventListener('click', (ev) => {
+  const li = ev.target.closest('li.clickable');
+  if (li) openClassModal(li.dataset.cls, todayStr(), li.dataset.period);
+});
+
+$('#weekTable').addEventListener('click', (ev) => {
+  const td = ev.target.closest('td.clickable');
+  if (td) openClassModal(td.dataset.cls, dayDate(Number(td.dataset.day)), td.dataset.period);
 });
 
 $('#overlay').addEventListener('click', (ev) => { if (ev.target.id === 'overlay') closeModal(); });
