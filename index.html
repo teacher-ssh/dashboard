@@ -198,9 +198,9 @@
     font-size: 13px;
   }
   table.week th { color: var(--sub); font-weight: 600; font-size: 12px; }
-  table.week th.pcol { width: 64px; }
-  table.week td.pcol { color: var(--sub); font-weight: 600; text-align: right; padding-right: 8px; line-height: 1.25; }
-  table.week td.pcol .ptime { display: block; font-size: 10px; color: var(--faint); font-weight: 400; font-variant-numeric: tabular-nums; }
+  table.week th.pcol { width: 92px; }
+  table.week td.pcol { color: var(--sub); font-weight: 600; text-align: right; padding-right: 10px; line-height: 1.3; white-space: nowrap; }
+  table.week td.pcol .ptime { display: block; font-size: 11px; color: var(--faint); font-weight: 400; font-variant-numeric: tabular-nums; }
   table.week tr.nowrow td.pcol { color: var(--accent-text); }
   table.week td.cls { word-break: keep-all; }
   table.week td.cls.filled { color: var(--text); font-weight: 500; }
@@ -866,8 +866,8 @@ function renderWeek() {
   for (let p = 1; p <= 7; p++) {
     const pi = plist.find(x => x.period === p) || { start: '', end: '' };
     const isNowRow = info.type === 'in' && info.period.period === p;
-    html += '<tr class="' + (isNowRow ? 'nowrow' : '') + '"><td class="pcol">' + p +
-      (pi.start ? '<span class="ptime">' + pi.start + '</span>' : '') + '</td>';
+    html += '<tr class="' + (isNowRow ? 'nowrow' : '') + '"><td class="pcol">' + p + '교시' +
+      (pi.start ? '<span class="ptime">' + pi.start + '~' + pi.end + '</span>' : '') + '</td>';
     DAYS.forEach((day, i) => {
       const key = day + p;
       const cls = (tt[key] || '').trim();
@@ -956,7 +956,7 @@ function openClassModal(cls, date, period, focusId) {
       '<div class="form-row"><label for="rProg">진도</label><input class="input" id="rProg" maxlength="100" placeholder="예: Ⅱ-2 뉴턴 제2법칙 p.54" value="' + esc(base.progress) + '"></div>' +
       '<div class="form-row"><label for="rMemo">메모</label><textarea class="input" id="rMemo" maxlength="2000" placeholder="수업 내용, 과제, 다음 시간 준비물 등">' + esc(base.memo) + '</textarea></div>' +
       '<div class="form-err" id="rErr"></div>' +
-      '<div class="modal-actions">' +
+      '<div class="modal-actions" id="rActions">' +
         (existing ? '<div class="left"><button class="btn btn-danger" id="rDel" type="button">기록 삭제</button></div>' : '') +
         '<button class="btn" id="rClose" type="button">닫기</button>' +
         '<button class="btn btn-primary" id="rSave" type="submit">' + (existing ? '저장' : '기록') + '</button>' +
