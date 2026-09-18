@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>숭신고 교직원 대시보드</title>
+<title>숭신고 교직원 온라인 교무실</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <style>
   :root {
@@ -198,12 +198,18 @@
     font-size: 13px;
   }
   table.week th { color: var(--sub); font-weight: 600; font-size: 12px; }
-  table.week th.pcol { width: 44px; }
-  table.week td.pcol { color: var(--faint); font-weight: 600; }
+  table.week th.pcol { width: 64px; }
+  table.week td.pcol { color: var(--sub); font-weight: 600; text-align: right; padding-right: 8px; line-height: 1.25; }
+  table.week td.pcol .ptime { display: block; font-size: 10px; color: var(--faint); font-weight: 400; font-variant-numeric: tabular-nums; }
+  table.week tr.nowrow td.pcol { color: var(--accent-text); }
   table.week td.cls { word-break: keep-all; }
   table.week td.cls.filled { color: var(--text); font-weight: 500; }
-  table.week .today { background: #f8faff; }
-  table.week th.today { color: var(--accent-text); }
+  table.week .today { background: #eef4ff; }
+  table.week th.today { color: var(--accent-text); background: #e3ecff; border-radius: 8px 8px 0 0; }
+  table.week td.today { font-weight: 600; }
+  table.week td.today.cls { color: var(--accent-text); }
+  table.week tr:last-child td.today { border-radius: 0 0 8px 8px; }
+  table.week td.done { opacity: .55; }
   table.week td.nowcell { background: var(--accent-soft); color: var(--accent-text); border-radius: 6px; font-weight: 700; }
   table.week td.clickable { cursor: pointer; }
   table.week td.clickable:hover { background: var(--line-soft); }
@@ -396,7 +402,7 @@
 <section id="loginView" class="hidden">
   <div class="login-card">
     <div class="login-logo">숭</div>
-    <h1>숭신고 교직원 대시보드</h1>
+    <h1>숭신고 교직원 온라인 교무실</h1>
     <p class="desc">학교 구글 계정으로 로그인해 주세요.</p>
     <div id="gbtn"></div>
     <div id="loginMsg"></div>
@@ -418,7 +424,7 @@
       <div class="brand">
         <div class="brand-mark">숭</div>
         <div class="brand-text">
-          <div class="brand-title">교직원 대시보드</div>
+          <div class="brand-title">교직원 온라인 교무실</div>
           <div class="brand-date" id="todayText"></div>
         </div>
       </div>
@@ -437,18 +443,12 @@
     <div class="col">
       <div class="card">
         <div class="card-head">
-          <h3 class="card-title">오늘 수업</h3>
+          <h3 class="card-title">내 시간표</h3>
           <span class="card-sub" id="todayCount"></span>
-        </div>
-        <div id="nowBox"></div>
-        <ul class="today-list" id="todayList"></ul>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <h3 class="card-title">주간 시간표</h3>
+          <span class="grow"></span>
           <span class="card-sub" id="weekInfo"></span>
         </div>
+        <div id="nowBox"></div>
         <div id="ttWarn"></div>
         <div class="week-wrap"><table class="week" id="weekTable"></table></div>
         <div class="tt-note" id="ttNote"></div>
@@ -761,12 +761,10 @@ function renderToday() {
   const tt = state.data.timetable || {};
   const list = periods();
   const box = $('#nowBox');
-  const ul = $('#todayList');
 
   if (dow < 1 || dow > 5) {
     $('#todayCount').textContent = '';
     box.innerHTML = '<div class="now-box free"><div class="now-label">오늘</div><div class="now-main">주말입니다</div><div class="now-desc">편안한 휴일 보내세요.</div></div>';
-    ul.innerHTML = '';
     return;
   }
 
@@ -774,7 +772,7 @@ function renderToday() {
   const nowMin = toMin(hm(d));
   const info = currentPeriodInfo();
   const count = list.filter(p => (tt[day + p.period] || '').trim()).length;
-  $('#todayCount').textContent = '수업 ' + count + '시간';
+  $('#todayCount').textContent = '오늘 수업 ' + count + '시간';
 
   // 상태 상자
   let html;
@@ -804,24 +802,6 @@ function renderToday() {
   box.innerHTML = html;
 
   // 교시 목록
-  const today = todayStr();
-  ul.innerHTML = list.map(p => {
-    const cls = (tt[day + p.period] || '').trim();
-    const st = [];
-    if (nowMin >= toMin(p.end)) st.push('done');
-    if (info.type === 'in' && info.period.period === p.period) st.push('now');
-    if (cls) st.push('clickable');
-    const prog = cls ? latestProgress(cls) : '';
-    const rec = cls ? findRecord(cls, today, p.period) : null;
-    return '<li class="' + st.join(' ') + '"' +
-      (cls ? ' data-cls="' + esc(cls) + '" data-period="' + p.period + '"' : '') + '>' +
-      '<span class="p">' + p.period + '교시</span>' +
-      '<span class="t">' + p.start + '~' + p.end + '</span>' +
-      '<span class="c' + (cls ? '' : ' empty') + '">' + (cls ? esc(cls) : '—') +
-        (rec ? '<span class="rec-done" title="오늘 기록함">✓</span>' : '') +
-        (prog ? '<span class="prog">' + esc(prog) + '</span>' : '') +
-      '</span></li>';
-  }).join('');
 }
 
 function freeBox(label, main, desc) {
