@@ -986,10 +986,10 @@ function renderWeek() {
       '<td colspan="5"></td></tr>';
   });
 
-  // 방과후
+  // 일과후
   const afterSchool = todayCol >= 0 && lastP && nowMin >= toMin(lastP.end);
   html += '<tr class="breakrow' + (afterSchool ? ' nowbreak' : '') + '">' +
-    '<td class="pcol">방과후</td><td colspan="5"></td></tr>';
+    '<td class="pcol">일과후</td><td colspan="5"></td></tr>';
 
   html += '</tbody>';
   $('#weekTable').innerHTML = html;
