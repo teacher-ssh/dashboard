@@ -193,10 +193,16 @@
   table.week { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 440px; table-layout: fixed; }
   table.week th, table.week td {
     border-bottom: 1px solid var(--line-soft);
+    border-right: 1px solid var(--line-soft);
     padding: 8px 4px;
     text-align: center;
     font-size: 13px;
   }
+  table.week th:last-child, table.week td:last-child { border-right: none; }
+  table.week th.pcol, table.week td.pcol { border-right: 1px solid var(--line); }
+  table.week td.cls.empty-cell { cursor: pointer; }
+  table.week td.cls.empty-cell:hover { background: var(--line-soft); }
+  table.week td .note-mark { display: block; font-size: 11px; color: var(--faint); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   table.week th { color: var(--sub); font-weight: 600; font-size: 12px; }
   table.week th.pcol { width: 92px; }
   table.week td.pcol { color: var(--sub); font-weight: 600; text-align: right; padding-right: 10px; line-height: 1.3; white-space: nowrap; }
@@ -226,6 +232,23 @@
     border-radius: 4px; padding: 0 3px; margin-left: 4px; vertical-align: 1px;
   }
   table.week tr:last-child td { border-bottom: none; }
+
+  /* 급식 */
+  .meal-tabs { display: flex; gap: 4px; }
+  .meal-tab {
+    border: 1px solid var(--line); background: #fff; color: var(--sub);
+    width: 30px; height: 28px; border-radius: 8px; font-size: 13px; padding: 0;
+  }
+  .meal-tab:hover { background: var(--line-soft); }
+  .meal-tab.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .meal-tab.none { color: #c8ccd3; }
+  .meal-date { font-size: 13px; color: var(--sub); margin-bottom: 8px; }
+  .meal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 8px; }
+  .meal-list li {
+    background: var(--line-soft); border-radius: 8px;
+    padding: 5px 10px; font-size: 14px;
+  }
+  .meal-list li.main { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
 
   /* 공지 목록 */
   .notice-list { list-style: none; margin: 0; padding: 0; }
@@ -458,6 +481,16 @@
         <div id="ttWarn"></div>
         <div class="week-wrap"><table class="week" id="weekTable"></table></div>
         <div class="tt-note" id="ttNote"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3 class="card-title">급식</h3>
+          <span class="card-sub" id="mealKcal"></span>
+          <span class="grow"></span>
+          <div class="meal-tabs" id="mealTabs"></div>
+        </div>
+        <div id="mealBody"></div>
       </div>
     </div>
 
@@ -735,6 +768,7 @@ function renderAll() {
   renderClock();
   renderToday();
   renderWeek();
+  renderMeal();
   renderUpcoming();
   renderCalendar();
   renderDayList();
@@ -914,21 +948,27 @@ function renderWeek() {
       const changed = hasPrev && cls !== before;
       if (changed) changedCount++;
       const isToday = i === todayCol;
+      const freeKey = freeSlotKey(day, p);
       const classes = ['cls'];
       if (cls) { classes.push('filled', 'clickable'); }
+      else { classes.push('empty-cell', 'clickable'); }
       if (isToday) classes.push('today');
       if (isToday && pi.end && nowMin >= toMin(pi.end)) classes.push('done');
       if (changed) classes.push('changed');
       if (isToday && isNowRow) classes.push('nowcell');
+      const key2 = cls || freeKey;
       const prog = cls ? latestProgress(cls) : '';
-      const rec = (cls && isToday) ? findRecord(cls, today, p) : null;
+      const note = cls ? '' : latestNote(freeKey);
+      const rec = isToday ? findRecord(key2, today, p) : null;
       html += '<td class="' + classes.join(' ') + '"' +
-        (cls ? ' data-cls="' + esc(cls) + '" data-day="' + i + '" data-period="' + p + '"' : '') +
+        ' data-cls="' + esc(key2) + '" data-day="' + i + '" data-period="' + p + '"' +
+        (cls ? '' : ' data-free="1"') +
         (changed ? ' title="지난주: ' + esc(before || '없음') + '"' : '') + '>' +
         (cls ? esc(cls) : '') +
         (rec ? '<span class="rec-done" title="기록함">✓</span>' : '') +
         (changed ? '<span class="chg">변경</span>' : '') +
         (prog ? '<span class="wprog">' + esc(prog) + '</span>' : '') +
+        (note ? '<span class="note-mark">' + esc(note) + '</span>' : '') +
         '</td>';
     });
     html += '</tr>';
@@ -964,6 +1004,67 @@ function dayNum(weekStart, i) {
   return (d.getMonth() + 1) + '/' + d.getDate();
 }
 
+/* ── 급식 ── */
+
+function meals() { return state.data.meals || []; }
+
+function renderMeal() {
+  const list = meals();
+  const tabs = $('#mealTabs');
+  const body = $('#mealBody');
+  const week = state.data.timetableWeek || ymd(mondayOf(new Date()));
+
+  if (!list.length) {
+    tabs.innerHTML = '';
+    $('#mealKcal').textContent = '';
+    body.innerHTML = '<div class="empty-msg">이번 주 급식 정보가 없습니다.</div>';
+    return;
+  }
+
+  // 처음에는 오늘(주말이면 월요일)
+  if (!state.mealDate || !list.some(m => m.date === state.mealDate)) {
+    const today = todayStr();
+    state.mealDate = list.some(m => m.date === today) ? today : list[0].date;
+  }
+
+  tabs.innerHTML = DAYS.map((d, i) => {
+    const date = addDays(week, i);
+    const has = list.some(m => m.date === date);
+    return '<button class="meal-tab' + (date === state.mealDate ? ' on' : '') + (has ? '' : ' none') +
+      '" type="button" data-date="' + date + '">' + d + '</button>';
+  }).join('');
+
+  const todays = list.filter(m => m.date === state.mealDate);
+  const kcal = todays.map(m => m.kcal).filter(k => k).join(' · ');
+  $('#mealKcal').textContent = kcal;
+
+  if (!todays.length) {
+    body.innerHTML = '<div class="meal-date">' + shortDate(state.mealDate) + '</div>' +
+      '<div class="empty-msg">급식이 없는 날입니다.</div>';
+    return;
+  }
+
+  body.innerHTML = '<div class="meal-date">' + shortDate(state.mealDate) +
+    (state.mealDate === todayStr() ? ' · 오늘' : '') + '</div>' +
+    todays.map(m =>
+      (todays.length > 1 ? '<div class="meal-date">' + esc(m.type) + '</div>' : '') +
+      '<ul class="meal-list">' + m.dishes.map((d, i) =>
+        '<li class="' + (i === 0 ? 'main' : '') + '">' + esc(d) + '</li>').join('') + '</ul>'
+    ).join('');
+}
+
+function mondayOf(d) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = (x.getDay() + 6) % 7;
+  x.setDate(x.getDate() - diff);
+  return x;
+}
+function addDays(dateStr, n) {
+  const d = parseYmd(dateStr);
+  d.setDate(d.getDate() + n);
+  return ymd(d);
+}
+
 /* ── 수업 기록 ── */
 
 function records() { return state.data.records || []; }
@@ -974,6 +1075,20 @@ function recordsFor(cls) {
 function latestProgress(cls) {
   const r = recordsFor(cls).find(x => x.progress);
   return r ? r.progress : '';
+}
+// 수업이 없는 칸의 기록 이름 (예: 빈시간 금5)
+function freeSlotKey(day, period) { return '빈시간 ' + day + period; }
+function isFreeSlot(cls) { return /^빈시간 /.test(String(cls || '')); }
+function freeSlotLabel(cls) {
+  const m = String(cls).match(/^빈시간 ([월화수목금])(\d)$/);
+  return m ? m[1] + '요일 ' + m[2] + '교시 (수업 없음)' : '빈 시간';
+}
+// 빈 칸에 남긴 메모의 첫 줄
+function latestNote(cls) {
+  const r = recordsFor(cls).find(x => x.memo || x.progress);
+  if (!r) return '';
+  const t = (r.memo || r.progress).split('\n')[0];
+  return t.length > 14 ? t.slice(0, 14) + '…' : t;
 }
 function findRecord(cls, date, period) {
   return records().find(r => r.cls === cls && r.date === date && String(r.period) === String(period));
@@ -992,6 +1107,7 @@ function openClassModal(cls, date, period, focusId) {
   const base = existing || { date: date, period: String(period), progress: '', memo: '' };
   const hist = recordsFor(cls);
   const latest = latestProgress(cls);
+  const free = isFreeSlot(cls);
 
   let periodOpts = '';
   for (let p = 1; p <= 7; p++) {
@@ -999,15 +1115,20 @@ function openClassModal(cls, date, period, focusId) {
   }
 
   openModal(
-    '<h2>' + esc(cls) + '</h2>' +
-    '<div class="meta">현재 진도: ' + (latest ? esc(latest) : '기록 없음') + '</div>' +
+    '<h2>' + esc(free ? freeSlotLabel(cls) : cls) + '</h2>' +
+    '<div class="meta">' + (free
+      ? '수업이 없는 시간입니다. 업무나 할 일을 적어 두세요.'
+      : '현재 진도: ' + (latest ? esc(latest) : '기록 없음')) + '</div>' +
     '<form id="rForm" autocomplete="off">' +
       '<div class="form-2">' +
         '<div class="form-row"><label for="rDate">날짜</label><input class="input" type="date" id="rDate" value="' + esc(base.date) + '" required></div>' +
         '<div class="form-row"><label for="rPeriod">교시</label><select class="input" id="rPeriod">' + periodOpts + '</select></div>' +
       '</div>' +
-      '<div class="form-row"><label for="rProg">진도</label><input class="input" id="rProg" maxlength="100" placeholder="예: Ⅱ-2 뉴턴 제2법칙 p.54" value="' + esc(base.progress) + '"></div>' +
-      '<div class="form-row"><label for="rMemo">메모</label><textarea class="input" id="rMemo" maxlength="2000" placeholder="수업 내용, 과제, 다음 시간 준비물 등">' + esc(base.memo) + '</textarea></div>' +
+      (free
+        ? '<input type="hidden" id="rProg" value="' + esc(base.progress) + '">'
+        : '<div class="form-row"><label for="rProg">진도</label><input class="input" id="rProg" maxlength="100" placeholder="예: Ⅱ-2 뉴턴 제2법칙 p.54" value="' + esc(base.progress) + '"></div>') +
+      '<div class="form-row"><label for="rMemo">메모</label><textarea class="input" id="rMemo" maxlength="2000" placeholder="' +
+        (free ? '업무, 상담, 준비할 일 등' : '수업 내용, 과제, 다음 시간 준비물 등') + '">' + esc(base.memo) + '</textarea></div>' +
       '<div class="form-err" id="rErr"></div>' +
       '<div class="modal-actions" id="rActions">' +
         (existing ? '<div class="left"><button class="btn btn-danger" id="rDel" type="button">기록 삭제</button></div>' : '') +
@@ -1031,7 +1152,7 @@ function openClassModal(cls, date, period, focusId) {
   );
 
   $('#rClose').onclick = closeModal;
-  $('#rProg').focus();
+  (free ? $('#rMemo') : $('#rProg')).focus();
 
   // 날짜·교시를 바꿨을 때 그 시간에 기록이 있으면 불러오기
   const reload = () => {
@@ -1086,7 +1207,7 @@ function openClassModal(cls, date, period, focusId) {
     };
     const err = $('#rErr');
     if (!rec.date) { err.textContent = '날짜를 입력해 주세요.'; return; }
-    if (!rec.progress && !rec.memo) { err.textContent = '진도나 메모를 입력해 주세요.'; return; }
+    if (!rec.progress && !rec.memo) { err.textContent = free ? '메모를 입력해 주세요.' : '진도나 메모를 입력해 주세요.'; return; }
     err.textContent = '';
 
     const btn = $('#rSave');
@@ -1376,6 +1497,13 @@ $('#calGrid').addEventListener('click', (ev) => {
     const item = ev.target.closest('.notice-item');
     if (item) openDetail(item.dataset.id);
   });
+});
+
+$('#mealTabs').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('.meal-tab');
+  if (!btn) return;
+  state.mealDate = btn.dataset.date;
+  renderMeal();
 });
 
 $('#weekTable').addEventListener('click', (ev) => {
