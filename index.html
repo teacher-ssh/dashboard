@@ -488,7 +488,11 @@
           <h3 class="card-title">급식</h3>
           <span class="card-sub" id="mealKcal"></span>
           <span class="grow"></span>
-          <div class="meal-tabs" id="mealTabs"></div>
+          <div class="meal-tabs">
+            <button class="btn" id="mealPrev" type="button" aria-label="이전 날">‹</button>
+            <button class="btn" id="mealToday" type="button">오늘</button>
+            <button class="btn" id="mealNext" type="button" aria-label="다음 날">›</button>
+          </div>
         </div>
         <div id="mealBody"></div>
       </div>
@@ -1008,49 +1012,63 @@ function dayNum(weekStart, i) {
 
 function meals() { return state.data.meals || []; }
 
+function mealDates() {
+  const set = {};
+  meals().forEach(m => { if (m.date) set[m.date] = true; });
+  return Object.keys(set).sort();
+}
+
 function renderMeal() {
   const list = meals();
-  const tabs = $('#mealTabs');
   const body = $('#mealBody');
-  const week = state.data.timetableWeek || ymd(mondayOf(new Date()));
+  const dates = mealDates();
 
-  if (!list.length) {
-    tabs.innerHTML = '';
+  if (!dates.length) {
     $('#mealKcal').textContent = '';
-    body.innerHTML = '<div class="empty-msg">이번 주 급식 정보가 없습니다.</div>';
+    body.innerHTML = '<div class="empty-msg">앞으로 2주간 급식 정보가 없습니다.</div>';
+    ['#mealPrev', '#mealNext', '#mealToday'].forEach(s => { $(s).disabled = true; });
     return;
   }
 
-  // 처음에는 오늘(주말이면 월요일)
-  if (!state.mealDate || !list.some(m => m.date === state.mealDate)) {
+  // 기본값: 오늘, 오늘 급식이 없으면 가장 가까운 다음 급식일
+  if (!state.mealDate) {
     const today = todayStr();
-    state.mealDate = list.some(m => m.date === today) ? today : list[0].date;
+    state.mealDate = dates.indexOf(today) >= 0 ? today : (dates.find(d => d >= today) || dates[0]);
   }
 
-  tabs.innerHTML = DAYS.map((d, i) => {
-    const date = addDays(week, i);
-    const has = list.some(m => m.date === date);
-    return '<button class="meal-tab' + (date === state.mealDate ? ' on' : '') + (has ? '' : ' none') +
-      '" type="button" data-date="' + date + '">' + d + '</button>';
-  }).join('');
+  const idx = dates.indexOf(state.mealDate);
+  $('#mealPrev').disabled = idx <= 0;
+  $('#mealNext').disabled = idx < 0 || idx >= dates.length - 1;
+  $('#mealToday').disabled = false;
 
   const todays = list.filter(m => m.date === state.mealDate);
-  const kcal = todays.map(m => m.kcal).filter(k => k).join(' · ');
-  $('#mealKcal').textContent = kcal;
+  $('#mealKcal').textContent = todays.map(m => m.kcal).filter(k => k).join(' · ');
+
+  const label = shortDate(state.mealDate) +
+    (state.mealDate === todayStr() ? ' · 오늘'
+      : state.mealDate === addDays(todayStr(), 1) ? ' · 내일' : '');
 
   if (!todays.length) {
-    body.innerHTML = '<div class="meal-date">' + shortDate(state.mealDate) + '</div>' +
+    body.innerHTML = '<div class="meal-date">' + label + '</div>' +
       '<div class="empty-msg">급식이 없는 날입니다.</div>';
     return;
   }
 
-  body.innerHTML = '<div class="meal-date">' + shortDate(state.mealDate) +
-    (state.mealDate === todayStr() ? ' · 오늘' : '') + '</div>' +
+  body.innerHTML = '<div class="meal-date">' + label + '</div>' +
     todays.map(m =>
       (todays.length > 1 ? '<div class="meal-date">' + esc(m.type) + '</div>' : '') +
       '<ul class="meal-list">' + m.dishes.map((d, i) =>
         '<li class="' + (i === 0 ? 'main' : '') + '">' + esc(d) + '</li>').join('') + '</ul>'
     ).join('');
+}
+
+function moveMeal(step) {
+  const dates = mealDates();
+  const idx = dates.indexOf(state.mealDate);
+  const next = idx + step;
+  if (next < 0 || next >= dates.length) return;
+  state.mealDate = dates[next];
+  renderMeal();
 }
 
 function mondayOf(d) {
@@ -1499,12 +1517,14 @@ $('#calGrid').addEventListener('click', (ev) => {
   });
 });
 
-$('#mealTabs').addEventListener('click', (ev) => {
-  const btn = ev.target.closest('.meal-tab');
-  if (!btn) return;
-  state.mealDate = btn.dataset.date;
+$('#mealPrev').onclick = () => moveMeal(-1);
+$('#mealNext').onclick = () => moveMeal(1);
+$('#mealToday').onclick = () => {
+  const dates = mealDates();
+  const today = todayStr();
+  state.mealDate = dates.indexOf(today) >= 0 ? today : (dates.find(d => d >= today) || dates[0]);
   renderMeal();
-});
+};
 
 $('#weekTable').addEventListener('click', (ev) => {
   const td = ev.target.closest('td.clickable');
