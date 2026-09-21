@@ -211,6 +211,19 @@
   table.week th.pcol, table.week td.pcol { border-right: 1px solid var(--line); }
   table.week td.cls.empty-cell { cursor: pointer; }
   table.week td.cls.empty-cell:hover { background: var(--line-soft); }
+  table.week td .share-chip {
+    display: block; font-size: 11px; margin-top: 3px;
+    background: var(--red-soft); color: var(--red);
+    border-radius: 5px; padding: 1px 5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .share-box {
+    background: var(--red-soft); color: var(--red);
+    border-radius: 9px; padding: 9px 12px; font-size: 13px; margin-bottom: 12px;
+  }
+  .share-box b { font-weight: 700; }
+  .share-box .who { color: #8a5a3a; font-size: 12px; }
   table.week td .note-mark { display: block; font-size: 11px; color: var(--faint); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   table.week th { color: var(--sub); font-weight: 600; font-size: 12px; }
   table.week th.pcol { width: 92px; }
@@ -898,7 +911,11 @@ function renderToday() {
   } else {
     html = freeBox('오늘', '수업이 모두 끝났습니다', '수고하셨습니다.');
   }
-  box.innerHTML = html;
+  const todayShares = list.map(p => sharedAt(today, p.period)).reduce((a, b) => a.concat(b), []);
+  box.innerHTML = html + (todayShares.length
+    ? todayShares.map(sr => '<div class="share-box"><b>' + esc(sr.period) + '교시 전체 안내</b> · ' +
+        esc(shareText(sr)) + '</div>').join('')
+    : '');
 
   // 교시 목록
 }
@@ -1027,6 +1044,10 @@ function renderWeek() {
         (changed ? '<span class="chg">변경</span>' : '') +
         (prog ? '<span class="wprog">' + esc(prog) + '</span>' : '') +
         (note ? '<span class="note-mark">' + esc(note) + '</span>' : '') +
+        (date ? sharedAt(date, p).map(sr =>
+          '<span class="share-chip" data-rid="' + esc(sr.id) + '" data-date="' + esc(sr.date) +
+          '" data-period="' + esc(sr.period) + '" title="전체 안내 · ' + esc(sr.author || '') + '">' +
+          esc(shareText(sr)) + '</span>').join('') : '') +
         '</td>';
     });
     html += '</tr>';
@@ -1180,6 +1201,12 @@ function freeSlotLabel(cls) {
   const m = String(cls).match(/^빈시간 ([월화수목금])(\d)$/);
   return m ? m[1] + '요일 ' + m[2] + '교시 (수업 없음)' : '빈 시간';
 }
+// 그 날짜·교시의 전체 공유 안내
+function sharedAt(date, period) {
+  return records().filter(r => r.shared && r.date === date && String(r.period) === String(period));
+}
+function shareText(r) { return (r.memo || r.progress || '').split('\n')[0]; }
+
 // 빈 칸에 남긴 메모의 첫 줄
 function latestNote(cls) {
   const r = recordsFor(cls).find(x => x.memo || x.progress);
@@ -1202,6 +1229,10 @@ function openClassModal(cls, date, period, focusId) {
   const hist = recordsFor(cls);
   const latest = latestProgress(cls);
   const free = isFreeSlot(cls);
+  const isShared = cls === '전체' || (existing && existing.shared);
+  const canShare = !!(state.data.me && state.data.me.canPost);
+  const notices = sharedAt(base.date, base.period).filter(r => !existing || r.id !== existing.id);
+  const readOnly = !!(existing && existing.mine === false);   // 남이 올린 전체 안내
 
   let periodOpts = '';
   for (let p = 1; p <= 7; p++) {
@@ -1209,25 +1240,34 @@ function openClassModal(cls, date, period, focusId) {
   }
 
   openModal(
-    '<h2>' + esc(free ? freeSlotLabel(cls) : cls) + '</h2>' +
-    '<div class="meta">' + (free
-      ? '수업이 없는 시간입니다. 업무나 할 일을 적어 두세요.'
-      : '현재 진도: ' + (latest ? esc(latest) : '기록 없음')) + '</div>' +
+    '<h2>' + esc(isShared ? '전체 안내' : (free ? freeSlotLabel(cls) : cls)) + '</h2>' +
+    '<div class="meta">' + (isShared
+      ? '모든 교직원 화면에 표시되는 안내입니다.'
+      : free
+        ? '수업이 없는 시간입니다. 업무나 할 일을 적어 두세요.'
+        : '현재 진도: ' + (latest ? esc(latest) : '기록 없음')) + '</div>' +
+    notices.map(n => '<div class="share-box"><b>전체 안내</b> · ' + esc(shareText(n)) +
+      '<div class="who">' + esc(n.author || '') + '</div></div>').join('') +
     '<form id="rForm" autocomplete="off">' +
       '<div class="form-2">' +
         '<div class="form-row"><label for="rDate">날짜</label><input class="input" type="date" id="rDate" value="' + esc(base.date) + '" required></div>' +
         '<div class="form-row"><label for="rPeriod">교시</label><select class="input" id="rPeriod">' + periodOpts + '</select></div>' +
       '</div>' +
-      (free
+      (free || isShared
         ? '<input type="hidden" id="rProg" value="' + esc(base.progress) + '">'
         : '<div class="form-row"><label for="rProg">진도</label><input class="input" id="rProg" maxlength="100" placeholder="예: Ⅱ-2 뉴턴 제2법칙 p.54" value="' + esc(base.progress) + '"></div>') +
       '<div class="form-row"><label for="rMemo">메모</label><textarea class="input" id="rMemo" maxlength="2000" placeholder="' +
         (free ? '업무, 상담, 준비할 일 등' : '수업 내용, 과제, 다음 시간 준비물 등') + '">' + esc(base.memo) + '</textarea></div>' +
+      (canShare
+        ? '<label class="check" style="margin-top:6px"><input type="checkbox" id="rShare"' +
+          (isShared ? ' checked' : '') + '> 전체 교직원에게 보이는 안내로 저장</label>'
+        : '') +
       '<div class="form-err" id="rErr"></div>' +
       '<div class="modal-actions" id="rActions">' +
-        (existing ? '<div class="left"><button class="btn btn-danger" id="rDel" type="button">기록 삭제</button></div>' : '') +
+        (existing && !readOnly ? '<div class="left"><button class="btn btn-danger" id="rDel" type="button">기록 삭제</button></div>' : '') +
+        (readOnly ? '<span class="card-sub" style="margin-right:auto">작성자: ' + esc(existing.author || '') + ' · 수정은 작성자만 가능합니다</span>' : '') +
         '<button class="btn" id="rClose" type="button">닫기</button>' +
-        '<button class="btn btn-primary" id="rSave" type="submit">' + (existing ? '저장' : '기록') + '</button>' +
+        (readOnly ? '' : '<button class="btn btn-primary" id="rSave" type="submit">' + (existing ? '저장' : '기록') + '</button>') +
       '</div>' +
     '</form>' +
     '<div class="rec-hist">' +
@@ -1246,7 +1286,11 @@ function openClassModal(cls, date, period, focusId) {
   );
 
   $('#rClose').onclick = closeModal;
-  (free ? $('#rMemo') : $('#rProg')).focus();
+  if (readOnly) {
+    ['#rDate', '#rPeriod', '#rMemo', '#rShare'].forEach(sel => { if ($(sel)) $(sel).disabled = true; });
+  } else {
+    ((free || isShared) ? $('#rMemo') : $('#rProg')).focus();
+  }
 
   // 날짜·교시를 바꿨을 때 그 시간에 기록이 있으면 불러오기
   const reload = () => {
@@ -1264,7 +1308,7 @@ function openClassModal(cls, date, period, focusId) {
     if (r) openClassModal(cls, r.date, r.period, r.id);
   });
 
-  if (existing) {
+  if (existing && !readOnly) {
     $('#rDel').onclick = () => {
       const box = $('#rActions');
       box.innerHTML = '<span class="card-sub" style="margin-right:auto">' +
@@ -1291,13 +1335,15 @@ function openClassModal(cls, date, period, focusId) {
 
   $('#rForm').onsubmit = async (ev) => {
     ev.preventDefault();
+    if (readOnly) return;
     const rec = {
       id: existing ? existing.id : '',
       cls: cls,
       date: $('#rDate').value,
       period: $('#rPeriod').value,
       progress: $('#rProg').value.trim(),
-      memo: $('#rMemo').value.trim()
+      memo: $('#rMemo').value.trim(),
+      share: !!($('#rShare') && $('#rShare').checked)
     };
     const err = $('#rErr');
     if (!rec.date) { err.textContent = '날짜를 입력해 주세요.'; return; }
@@ -1603,6 +1649,12 @@ $('#mealToday').onclick = () => {
 };
 
 $('#weekTable').addEventListener('click', (ev) => {
+  const chip = ev.target.closest('.share-chip');
+  if (chip) {
+    ev.stopPropagation();
+    openClassModal('전체', chip.dataset.date, chip.dataset.period, chip.dataset.rid);
+    return;
+  }
   const td = ev.target.closest('td.clickable');
   if (td) openClassModal(td.dataset.cls, dayDate(Number(td.dataset.day)), td.dataset.period);
 });
