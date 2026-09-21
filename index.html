@@ -521,6 +521,11 @@
           <span class="card-sub" id="todayCount"></span>
           <span class="grow"></span>
           <span class="card-sub" id="weekInfo"></span>
+          <div class="meal-tabs">
+            <button class="btn" id="weekPrev" type="button" aria-label="이전 주">‹</button>
+            <button class="btn" id="weekThis" type="button">이번 주</button>
+            <button class="btn" id="weekNext" type="button" aria-label="다음 주">›</button>
+          </div>
         </div>
         <div id="nowBox"></div>
         <div id="ttWarn"></div>
@@ -609,6 +614,7 @@ const state = {
   calMonth: 0,
   selDate: '',
   view: 'loading',
+  weekOffset: 0,
   gisReady: false,
   busy: false
 };
@@ -945,6 +951,12 @@ function formatMins(m) {
   return h + '시간' + (r ? ' ' + r + '분' : '');
 }
 
+// 지금 화면에 보이는 주의 월요일
+function shownWeek() {
+  const base = state.data.timetableWeek || ymd(mondayOf(new Date()));
+  return addDays(base, (state.weekOffset || 0) * 7);
+}
+
 // 그 날짜·교시에 변경이 있으면 { cls, base }
 function changeAt(date, period) {
   const c = state.data.changes || {};
@@ -962,13 +974,16 @@ function renderWeek() {
   const tt = state.data.timetable || {};
   const d = new Date();
   const dow = d.getDay();
-  const todayCol = (dow >= 1 && dow <= 5) ? dow - 1 : -1;
+  const week = shownWeek();
+  const isThisWeek = (state.weekOffset || 0) === 0;
+  const todayCol = (isThisWeek && dow >= 1 && dow <= 5) ? dow - 1 : -1;
   const info = currentPeriodInfo();
-  const week = state.data.timetableWeek || '';
   let changedCount = 0;
 
-  // 카드 머리말: 시간표 기준 주
-  $('#weekInfo').textContent = week ? shortDate(week) + ' 주' : '';
+  // 카드 머리말: 보고 있는 주
+  $('#weekInfo').textContent = shortDate(week) + ' ~ ' + shortDate(addDays(week, 4)) +
+    (isThisWeek ? '' : (state.weekOffset > 0 ? ' (다음 주)' : ' (지난 주)'));
+  $('#weekThis').disabled = isThisWeek;
 
   // 안내 문구
   const warn = $('#ttWarn');
@@ -1219,8 +1234,7 @@ function findRecord(cls, date, period) {
 }
 // 시간표에 표시된 주의 해당 요일(0=월) 날짜
 function dayDate(dayIdx) {
-  const week = state.data.timetableWeek || ymd(mondayOf(new Date()));
-  return addDays(week, dayIdx);
+  return addDays(shownWeek(), dayIdx);
 }
 
 function openClassModal(cls, date, period, focusId) {
@@ -1638,6 +1652,16 @@ $('#calGrid').addEventListener('click', (ev) => {
     if (item) openDetail(item.dataset.id);
   });
 });
+
+function moveWeek(step) {
+  state.weekOffset = (state.weekOffset || 0) + step;
+  if (state.weekOffset < -4) state.weekOffset = -4;
+  if (state.weekOffset > 4) state.weekOffset = 4;
+  renderWeek();
+}
+$('#weekPrev').onclick = () => moveWeek(-1);
+$('#weekNext').onclick = () => moveWeek(1);
+$('#weekThis').onclick = () => { state.weekOffset = 0; renderWeek(); };
 
 $('#mealPrev').onclick = () => moveMeal(-1);
 $('#mealNext').onclick = () => moveMeal(1);
