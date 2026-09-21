@@ -219,10 +219,19 @@
   table.week tr.nowrow td.pcol { color: var(--accent-text); }
   table.week td.cls { word-break: keep-all; }
   table.week td.cls.filled { color: var(--text); font-weight: 500; }
-  table.week .today { background: #eef2ea; }
-  table.week th.today { color: var(--accent-text); background: #e2ebdf; border-radius: 8px 8px 0 0; }
-  table.week td.today { font-weight: 600; }
-  table.week td.today.cls { color: var(--accent-text); }
+  table.week .today { background: #e7eee3; }
+  table.week th.today {
+    color: #fffdf7; background: var(--accent);
+    border-radius: 8px 8px 0 0; font-weight: 700;
+  }
+  table.week th.today span { color: #dbe6d6 !important; }
+  table.week td.today {
+    font-weight: 700; color: var(--accent-text);
+    border-left: 1px solid #c9d8c3; border-right: 1px solid #c9d8c3;
+  }
+  table.week td.today.cls.filled { font-size: 14px; }
+  table.week td.today .wprog, table.week td.today .note-mark { color: #6d7f68; }
+  table.week tr.breakrow td.today { background: #dde7d8; }
   table.week tr:last-child td.today { border-radius: 0 0 8px 8px; }
   table.week td.done { opacity: .55; }
   table.week tr.breakrow td {
@@ -1041,7 +1050,6 @@ function renderWeek() {
 
   const notes = [];
   if (changedCount) notes.push('<span class="legend"><span class="box"></span> 이번 주 변경 ' + changedCount + '칸</span>');
-  if (state.data.timetableUpdatedAt) notes.push('기본 시간표: ' + esc(state.data.timetableUpdatedAt.slice(0, 16)));
   notes.push('칸을 누르면 진도와 수업 기록을 쓸 수 있습니다.');
   $('#ttNote').innerHTML = notes.join(' · ');
 }
