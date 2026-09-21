@@ -822,13 +822,14 @@ function renderToday() {
   const day = DAYS[dow - 1];
   const nowMin = toMin(hm(d));
   const info = currentPeriodInfo();
-  const count = list.filter(p => (tt[day + p.period] || '').trim()).length;
+  const today = todayStr();
+  const count = list.filter(p => classAt(day, p.period, today)).length;
   $('#todayCount').textContent = '오늘 수업 ' + count + '시간';
 
   // 상태 상자
   let html;
   if (info.type === 'in') {
-    const cls = (tt[day + info.period.period] || '').trim();
+    const cls = classAt(day, info.period.period, today);
     const left = toMin(info.period.end) - nowMin;
     if (cls) {
       html = '<div class="now-box"><div class="now-label">지금 ' + info.period.period + '교시 수업 중</div>' +
@@ -868,9 +869,9 @@ function freeBox(label, main, desc) {
 }
 
 function nextClass(day, nowMin) {
-  const tt = state.data.timetable || {};
+  const today = todayStr();
   for (const p of periods()) {
-    const cls = (tt[day + p.period] || '').trim();
+    const cls = classAt(day, p.period, today);
     if (cls && toMin(p.start) > nowMin) return { period: p.period, start: p.start, cls: cls };
   }
   return null;
@@ -887,10 +888,21 @@ function formatMins(m) {
   return h + '시간' + (r ? ' ' + r + '분' : '');
 }
 
+// 그 날짜·교시에 변경이 있으면 { cls, base }
+function changeAt(date, period) {
+  const c = state.data.changes || {};
+  return (c[date] && c[date][String(period)]) || null;
+}
+
+// 기본 시간표에 그날 변경분을 덮어쓴 실제 수업
+function classAt(day, period, date) {
+  const ch = date ? changeAt(date, period) : null;
+  if (ch) return ch.cls;
+  return ((state.data.timetable || {})[day + period] || '').trim();
+}
+
 function renderWeek() {
   const tt = state.data.timetable || {};
-  const prev = state.data.prevTimetable || {};
-  const hasPrev = Object.keys(prev).length > 0;
   const d = new Date();
   const dow = d.getDay();
   const todayCol = (dow >= 1 && dow <= 5) ? dow - 1 : -1;
@@ -947,9 +959,11 @@ function renderWeek() {
       (pi.start ? '<span class="ptime">(' + pi.start + '~' + pi.end + ')</span>' : '') + '</td>';
     DAYS.forEach((day, i) => {
       const key = day + p;
-      const cls = (tt[key] || '').trim();
-      const before = (prev[key] || '').trim();
-      const changed = hasPrev && cls !== before;
+      const date = week ? addDays(week, i) : '';
+      const ch = date ? changeAt(date, p) : null;
+      const cls = ch ? ch.cls : (tt[key] || '').trim();
+      const before = ch ? ch.base : '';
+      const changed = !!ch;
       if (changed) changedCount++;
       const isToday = i === todayCol;
       const freeKey = freeSlotKey(day, p);
@@ -967,7 +981,7 @@ function renderWeek() {
       html += '<td class="' + classes.join(' ') + '"' +
         ' data-cls="' + esc(key2) + '" data-day="' + i + '" data-period="' + p + '"' +
         (cls ? '' : ' data-free="1"') +
-        (changed ? ' title="지난주: ' + esc(before || '없음') + '"' : '') + '>' +
+        (changed ? ' title="원래: ' + esc(before || '수업 없음') + '"' : '') + '>' +
         (cls ? esc(cls) : '') +
         (rec ? '<span class="rec-done" title="기록함">✓</span>' : '') +
         (changed ? '<span class="chg">변경</span>' : '') +
@@ -986,17 +1000,17 @@ function renderWeek() {
       '<td colspan="5"></td></tr>';
   });
 
-  // 일과후
+  // 방과후
   const afterSchool = todayCol >= 0 && lastP && nowMin >= toMin(lastP.end);
   html += '<tr class="breakrow' + (afterSchool ? ' nowbreak' : '') + '">' +
-    '<td class="pcol">일과후</td><td colspan="5"></td></tr>';
+    '<td class="pcol">방과후</td><td colspan="5"></td></tr>';
 
   html += '</tbody>';
   $('#weekTable').innerHTML = html;
 
   const notes = [];
-  if (changedCount) notes.push('<span class="legend"><span class="box"></span> 지난주와 다른 시간 ' + changedCount + '칸</span>');
-  if (state.data.timetableUpdatedAt) notes.push('시간표 갱신: ' + esc(state.data.timetableUpdatedAt.slice(0, 16)));
+  if (changedCount) notes.push('<span class="legend"><span class="box"></span> 이번 주 변경 ' + changedCount + '칸</span>');
+  if (state.data.timetableUpdatedAt) notes.push('기본 시간표: ' + esc(state.data.timetableUpdatedAt.slice(0, 16)));
   notes.push('칸을 누르면 진도와 수업 기록을 쓸 수 있습니다.');
   $('#ttNote').innerHTML = notes.join(' · ');
 }
