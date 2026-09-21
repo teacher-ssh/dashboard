@@ -1190,13 +1190,10 @@ function latestNote(cls) {
 function findRecord(cls, date, period) {
   return records().find(r => r.cls === cls && r.date === date && String(r.period) === String(period));
 }
-// 이번 주 해당 요일(0=월)의 날짜 — 아직 오지 않았으면 지난주 같은 요일
+// 시간표에 표시된 주의 해당 요일(0=월) 날짜
 function dayDate(dayIdx) {
-  const d = new Date();
-  let diff = d.getDay() - (dayIdx + 1);
-  if (diff < 0) diff += 7;
-  d.setDate(d.getDate() - diff);
-  return ymd(d);
+  const week = state.data.timetableWeek || ymd(mondayOf(new Date()));
+  return addDays(week, dayIdx);
 }
 
 function openClassModal(cls, date, period, focusId) {
