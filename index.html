@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>숭신고 온라인 교무실</title>
+<title>숭신고 교직원 온라인 교무실</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <style>
   :root {
@@ -232,6 +232,20 @@
     border-radius: 4px; padding: 0 3px; margin-left: 4px; vertical-align: 1px;
   }
   table.week tr:last-child td { border-bottom: none; }
+
+  /* 바로가기 */
+  .link-group { margin-bottom: 12px; }
+  .link-group:last-child { margin-bottom: 0; }
+  .link-group-title { font-size: 12px; color: var(--faint); font-weight: 600; margin-bottom: 6px; }
+  .link-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .link-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); background: #fff; color: var(--text);
+    border-radius: 9px; padding: 7px 12px; font-size: 14px; text-decoration: none;
+  }
+  .link-btn:hover { background: var(--accent-soft); border-color: #cddcff; color: var(--accent-text); }
+  .link-btn .ico { color: var(--faint); font-size: 12px; }
+  .link-btn:hover .ico { color: var(--accent); }
 
   /* 급식 */
   .meal-tabs { display: flex; gap: 4px; }
@@ -481,6 +495,13 @@
         <div id="ttWarn"></div>
         <div class="week-wrap"><table class="week" id="weekTable"></table></div>
         <div class="tt-note" id="ttNote"></div>
+      </div>
+
+      <div class="card hidden" id="linkCard">
+        <div class="card-head">
+          <h3 class="card-title">바로가기</h3>
+        </div>
+        <div id="linkBody"></div>
       </div>
 
       <div class="card">
@@ -772,6 +793,7 @@ function renderAll() {
   renderClock();
   renderToday();
   renderWeek();
+  renderLinks();
   renderMeal();
   renderUpcoming();
   renderCalendar();
@@ -1020,6 +1042,32 @@ function dayNum(weekStart, i) {
   const d = parseYmd(weekStart);
   d.setDate(d.getDate() + i);
   return (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+/* ── 바로가기 ── */
+
+function renderLinks() {
+  const list = (state.data.links || []).filter(l => l.name && /^https?:\/\//i.test(l.url));
+  const card = $('#linkCard');
+  if (!list.length) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+
+  const groups = [];
+  list.forEach(l => {
+    const g = l.group || '';
+    let bucket = groups.find(x => x.name === g);
+    if (!bucket) { bucket = { name: g, items: [] }; groups.push(bucket); }
+    bucket.items.push(l);
+  });
+
+  $('#linkBody').innerHTML = groups.map(g =>
+    '<div class="link-group">' +
+      (g.name ? '<div class="link-group-title">' + esc(g.name) + '</div>' : '') +
+      '<div class="link-row">' + g.items.map(l =>
+        '<a class="link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="' + esc(l.url) + '">' +
+        esc(l.name) + '<span class="ico">↗</span></a>').join('') +
+      '</div>' +
+    '</div>').join('');
 }
 
 /* ── 급식 ── */
