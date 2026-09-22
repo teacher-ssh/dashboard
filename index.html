@@ -293,16 +293,28 @@
   table.week tr:last-child td { border-bottom: none; }
 
   /* 바로가기 */
-  .link-group { margin-bottom: 12px; }
-  .link-group:last-child { margin-bottom: 0; }
-  .link-group-title { font-size: 12px; color: var(--faint); font-weight: 600; margin-bottom: 6px; }
-  .link-row { display: flex; flex-wrap: wrap; gap: 8px; }
-  .link-btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    border: 1px solid var(--line); background: #fff; color: var(--text);
-    border-radius: 9px; padding: 7px 12px; font-size: 14px; text-decoration: none;
+  .link-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .link-group {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 14px 16px; min-width: 0;
   }
-  .link-btn:hover { background: var(--accent-soft); border-color: #cfdcc9; color: var(--accent-text); }
+  .link-group-title {
+    font-family: var(--serif); font-size: 15px; font-weight: 700; color: var(--accent-text);
+    padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line-soft);
+    display: flex; align-items: baseline; gap: 6px;
+  }
+  .link-group-title .cnt { font-size: 12px; font-weight: 400; color: var(--faint); }
+  .link-row { display: flex; flex-direction: column; gap: 2px; }
+  .link-note { display: block; font-size: 12px; color: var(--faint); margin-top: 1px; }
+  @media (max-width: 1100px) { .link-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 700px) { .link-grid { grid-template-columns: minmax(0, 1fr); } }
+  .link-btn {
+    display: flex; align-items: baseline; gap: 7px;
+    border: none; background: none; color: var(--text);
+    border-radius: 8px; padding: 7px 8px; font-size: 14px; text-decoration: none;
+  }
+  .link-btn:hover { background: var(--accent-soft); color: var(--accent-text); }
   .link-btn .ico { color: var(--faint); font-size: 12px; }
   .link-btn:hover .ico { color: var(--accent); }
 
@@ -624,9 +636,10 @@
     <!-- 바로가기 -->
     <section class="panel hidden" data-panel="links">
       <div class="col wide">
-        <div class="card" id="linkCard">
-          <div class="card-head">
-            <h3 class="card-title">바로가기</h3>
+        <div id="linkCard">
+          <div class="card-head" style="margin-bottom:12px">
+            <h3 class="card-title">부서별 업무 바로가기</h3>
+            <span class="card-sub" id="linkCount"></span>
           </div>
           <div id="linkBody"></div>
         </div>
@@ -1179,8 +1192,9 @@ function initTab() {
 
 function renderLinks() {
   const list = (state.data.links || []).filter(l => l.name && /^https?:\/\//i.test(l.url));
+  $('#linkCount').textContent = list.length ? '업무 ' + list.length + '개' : '';
   if (!list.length) {
-    $('#linkBody').innerHTML = '<div class="empty-msg">바로가기가 등록되지 않았습니다. 시트의 바로가기 탭에 이름과 주소를 적어 주세요.</div>';
+    $('#linkBody').innerHTML = '<div class="empty-msg">바로가기가 등록되지 않았습니다. 시트의 바로가기 탭에 업무명과 주소를 적어 주세요.</div>';
     return;
   }
 
@@ -1192,14 +1206,26 @@ function renderLinks() {
     bucket.items.push(l);
   });
 
-  $('#linkBody').innerHTML = groups.map(g =>
+  // 부서 순서: 숫자면 숫자 순, 아니면 처음 나온 순서
+  groups.sort((a, b) => {
+    const na = Number(a.name), nb = Number(b.name);
+    const aNum = a.name !== '' && !isNaN(na), bNum = b.name !== '' && !isNaN(nb);
+    if (aNum && bNum) return na - nb;
+    if (aNum !== bNum) return aNum ? -1 : 1;
+    return 0;
+  });
+
+  $('#linkBody').innerHTML = '<div class="link-grid">' + groups.map(g =>
     '<div class="link-group">' +
-      (g.name ? '<div class="link-group-title">' + esc(g.name) + '</div>' : '') +
+      '<div class="link-group-title">' + esc(g.name || '기타') +
+        '<span class="cnt">' + g.items.length + '</span></div>' +
       '<div class="link-row">' + g.items.map(l =>
         '<a class="link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="' + esc(l.url) + '">' +
-        esc(l.name) + '<span class="ico">↗</span></a>').join('') +
+        '<span class="ico">↗</span><span>' + esc(l.name) +
+        (l.note ? '<span class="link-note">' + esc(l.note) + '</span>' : '') +
+        '</span></a>').join('') +
       '</div>' +
-    '</div>').join('');
+    '</div>').join('') + '</div>';
 }
 
 /* ── 급식 ── */
