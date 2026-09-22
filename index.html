@@ -1246,7 +1246,8 @@ function openClassModal(cls, date, period, focusId) {
   const isShared = cls === '전체' || (existing && existing.shared);
   const canShare = !!(state.data.me && state.data.me.canPost);
   const notices = sharedAt(base.date, base.period).filter(r => !existing || r.id !== existing.id);
-  const readOnly = !!(existing && existing.mine === false);   // 남이 올린 전체 안내
+  // 남이 올린 기록: 전체 안내는 공지 작성 권한이 있으면 고칠 수 있다
+  const readOnly = !!(existing && existing.mine === false && !(existing.shared && canShare));
 
   let periodOpts = '';
   for (let p = 1; p <= 7; p++) {
@@ -1279,7 +1280,11 @@ function openClassModal(cls, date, period, focusId) {
       '<div class="form-err" id="rErr"></div>' +
       '<div class="modal-actions" id="rActions">' +
         (existing && !readOnly ? '<div class="left"><button class="btn btn-danger" id="rDel" type="button">기록 삭제</button></div>' : '') +
-        (readOnly ? '<span class="card-sub" style="margin-right:auto">작성자: ' + esc(existing.author || '') + ' · 수정은 작성자만 가능합니다</span>' : '') +
+        (readOnly
+          ? '<span class="card-sub" style="margin-right:auto">작성자: ' + esc(existing.author || '') + ' · 수정은 작성자만 가능합니다</span>'
+          : (existing && existing.mine === false
+              ? '<span class="card-sub" style="margin-right:auto">작성자: ' + esc(existing.author || '') + '</span>'
+              : '')) +
         '<button class="btn" id="rClose" type="button">닫기</button>' +
         (readOnly ? '' : '<button class="btn btn-primary" id="rSave" type="submit">' + (existing ? '저장' : '기록') + '</button>') +
       '</div>' +
