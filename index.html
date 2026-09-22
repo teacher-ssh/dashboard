@@ -118,15 +118,39 @@
   }
   .icon-btn:hover { background: var(--line-soft); color: var(--text); }
 
+  /* ── 메뉴 ── */
+  nav.tabs {
+    position: sticky; top: 59px; z-index: 15;
+    background: rgba(250, 245, 236, .92);
+    backdrop-filter: saturate(180%) blur(8px);
+    border-bottom: 1px solid var(--line);
+    display: flex; gap: 4px;
+    padding: 0 20px;
+    max-width: 1280px; margin: 0 auto;
+    overflow-x: auto;
+  }
+  nav.tabs .tab {
+    border: none; background: none; color: var(--sub);
+    font-family: var(--serif); font-size: 15px; font-weight: 500;
+    padding: 12px 14px 10px;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  nav.tabs .tab:hover { color: var(--text); }
+  nav.tabs .tab.on { color: var(--accent-text); font-weight: 700; border-bottom-color: var(--accent); }
+
   /* ── 본문 ── */
   main {
     max-width: 1280px; margin: 0 auto;
     padding: 20px;
+  }
+  .panel {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
     gap: 20px;
     align-items: start;
   }
+  .panel .col.wide { grid-column: 1 / -1; }
   .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
   .card {
     background: var(--card);
@@ -452,7 +476,9 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   @media (max-width: 960px) {
-    main { grid-template-columns: minmax(0, 1fr); padding: 16px; gap: 16px; }
+    main { padding: 16px; }
+    .panel { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    nav.tabs { top: 55px; padding: 0 12px; }
     .col { gap: 16px; }
     .clock { font-size: 18px; }
   }
@@ -513,76 +539,95 @@
     </div>
   </header>
 
+  <nav class="tabs" id="tabs">
+    <button class="tab on" type="button" data-tab="timetable">시간표</button>
+    <button class="tab" type="button" data-tab="notice">일정</button>
+    <button class="tab" type="button" data-tab="links">바로가기</button>
+  </nav>
+
   <main>
-    <div class="col">
-      <div class="card">
-        <div class="card-head">
-          <h3 class="card-title">내 시간표</h3>
-          <span class="card-sub" id="todayCount"></span>
-          <span class="grow"></span>
-          <span class="card-sub" id="weekInfo"></span>
-          <div class="meal-tabs">
-            <button class="btn" id="weekPrev" type="button" aria-label="이전 주">‹</button>
-            <button class="btn" id="weekThis" type="button">이번 주</button>
-            <button class="btn" id="weekNext" type="button" aria-label="다음 주">›</button>
+    <!-- 시간표 -->
+    <section class="panel" data-panel="timetable">
+      <div class="col wide">
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">내 시간표</h3>
+            <span class="card-sub" id="todayCount"></span>
+            <span class="grow"></span>
+            <span class="card-sub" id="weekInfo"></span>
+            <div class="meal-tabs">
+              <button class="btn" id="weekPrev" type="button" aria-label="이전 주">‹</button>
+              <button class="btn" id="weekThis" type="button">이번 주</button>
+              <button class="btn" id="weekNext" type="button" aria-label="다음 주">›</button>
+            </div>
+          </div>
+          <div id="nowBox"></div>
+          <div id="ttWarn"></div>
+          <div class="week-wrap"><table class="week" id="weekTable"></table></div>
+          <div class="tt-note" id="ttNote"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">급식</h3>
+            <span class="card-sub" id="mealKcal"></span>
+            <span class="grow"></span>
+            <div class="meal-tabs">
+              <button class="btn" id="mealPrev" type="button" aria-label="이전 날">‹</button>
+              <button class="btn" id="mealToday" type="button">오늘</button>
+              <button class="btn" id="mealNext" type="button" aria-label="다음 날">›</button>
+            </div>
+          </div>
+          <div id="mealBody"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 일정 -->
+    <section class="panel hidden" data-panel="notice">
+      <div class="col">
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">다가오는 일정</h3>
+            <span class="grow"></span>
+            <button class="btn btn-primary hidden" id="addBtn" type="button">+ 공지 등록</button>
+          </div>
+          <ul class="notice-list" id="upcomingList"></ul>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">달력</h3>
+            <span class="grow"></span>
+            <div class="cal-nav">
+              <button class="btn" id="calPrev" type="button" aria-label="이전 달">‹</button>
+              <span class="month" id="calMonth"></span>
+              <button class="btn" id="calNext" type="button" aria-label="다음 달">›</button>
+              <button class="btn" id="calToday" type="button">오늘</button>
+            </div>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="day-panel">
+            <div class="day-panel-title" id="dayTitle"></div>
+            <ul class="notice-list" id="dayList"></ul>
           </div>
         </div>
-        <div id="nowBox"></div>
-        <div id="ttWarn"></div>
-        <div class="week-wrap"><table class="week" id="weekTable"></table></div>
-        <div class="tt-note" id="ttNote"></div>
       </div>
+    </section>
 
-      <div class="card hidden" id="linkCard">
-        <div class="card-head">
-          <h3 class="card-title">바로가기</h3>
-        </div>
-        <div id="linkBody"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <h3 class="card-title">급식</h3>
-          <span class="card-sub" id="mealKcal"></span>
-          <span class="grow"></span>
-          <div class="meal-tabs">
-            <button class="btn" id="mealPrev" type="button" aria-label="이전 날">‹</button>
-            <button class="btn" id="mealToday" type="button">오늘</button>
-            <button class="btn" id="mealNext" type="button" aria-label="다음 날">›</button>
+    <!-- 바로가기 -->
+    <section class="panel hidden" data-panel="links">
+      <div class="col wide">
+        <div class="card" id="linkCard">
+          <div class="card-head">
+            <h3 class="card-title">바로가기</h3>
           </div>
-        </div>
-        <div id="mealBody"></div>
-      </div>
-    </div>
-
-    <div class="col">
-      <div class="card">
-        <div class="card-head">
-          <h3 class="card-title">다가오는 일정</h3>
-          <span class="grow"></span>
-          <button class="btn btn-primary hidden" id="addBtn" type="button">+ 공지 등록</button>
-        </div>
-        <ul class="notice-list" id="upcomingList"></ul>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <h3 class="card-title">달력</h3>
-          <span class="grow"></span>
-          <div class="cal-nav">
-            <button class="btn" id="calPrev" type="button" aria-label="이전 달">‹</button>
-            <span class="month" id="calMonth"></span>
-            <button class="btn" id="calNext" type="button" aria-label="다음 달">›</button>
-            <button class="btn" id="calToday" type="button">오늘</button>
-          </div>
-        </div>
-        <div class="cal-grid" id="calGrid"></div>
-        <div class="day-panel">
-          <div class="day-panel-title" id="dayTitle"></div>
-          <ul class="notice-list" id="dayList"></ul>
+          <div id="linkBody"></div>
         </div>
       </div>
-    </div>
+    </section>
   </main>
 </section>
 
@@ -775,6 +820,7 @@ async function boot() {
 }
 
 function enterApp() {
+  initTab();
   const now = new Date();
   if (!state.selDate) state.selDate = todayStr();
   if (!state.calYear) { state.calYear = now.getFullYear(); state.calMonth = now.getMonth(); }
@@ -1097,13 +1143,42 @@ function dayNum(weekStart, i) {
   return (d.getMonth() + 1) + '/' + d.getDate();
 }
 
+/* ── 메뉴(탭) 전환 ── */
+
+const TABS = ['timetable', 'notice', 'links'];
+const TAB_KEY = 'ssgh_dash_tab';
+
+function switchTab(name, remember) {
+  if (TABS.indexOf(name) < 0) name = TABS[0];
+  state.tab = name;
+  document.querySelectorAll('nav.tabs .tab').forEach(b => {
+    b.classList.toggle('on', b.dataset.tab === name);
+  });
+  document.querySelectorAll('.panel').forEach(p => {
+    p.classList.toggle('hidden', p.dataset.panel !== name);
+  });
+  if (remember !== false) {
+    try { localStorage.setItem(TAB_KEY, name); } catch (e) {}
+    if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
+  }
+  window.scrollTo({ top: 0 });
+}
+
+function initTab() {
+  const fromHash = (location.hash || '').replace('#', '');
+  let saved = '';
+  try { saved = localStorage.getItem(TAB_KEY) || ''; } catch (e) {}
+  switchTab(TABS.indexOf(fromHash) >= 0 ? fromHash : (saved || TABS[0]));
+}
+
 /* ── 바로가기 ── */
 
 function renderLinks() {
   const list = (state.data.links || []).filter(l => l.name && /^https?:\/\//i.test(l.url));
-  const card = $('#linkCard');
-  if (!list.length) { card.classList.add('hidden'); return; }
-  card.classList.remove('hidden');
+  if (!list.length) {
+    $('#linkBody').innerHTML = '<div class="empty-msg">바로가기가 등록되지 않았습니다. 시트의 바로가기 탭에 이름과 주소를 적어 주세요.</div>';
+    return;
+  }
 
   const groups = [];
   list.forEach(l => {
@@ -1664,6 +1739,15 @@ function moveWeek(step) {
   if (state.weekOffset > 4) state.weekOffset = 4;
   renderWeek();
 }
+$('#tabs').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('.tab');
+  if (btn) switchTab(btn.dataset.tab);
+});
+window.addEventListener('hashchange', () => {
+  const name = (location.hash || '').replace('#', '');
+  if (TABS.indexOf(name) >= 0 && name !== state.tab) switchTab(name, false);
+});
+
 $('#weekPrev').onclick = () => moveWeek(-1);
 $('#weekNext').onclick = () => moveWeek(1);
 $('#weekThis').onclick = () => { state.weekOffset = 0; renderWeek(); };
