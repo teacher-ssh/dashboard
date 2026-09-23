@@ -281,6 +281,9 @@
   }
   table.week tr.breakrow.nowbreak td { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
   table.week tr.breakrow td.pcol { letter-spacing: 0; }
+  table.week tr.breakrow td.breakcell { letter-spacing: 0; padding: 5px 4px; }
+  table.week tr.breakrow td.breakcell:hover { background: #efe7d8; }
+  table.week td .duty { display: block; font-size: 12px; color: var(--accent-text); font-weight: 600; }
   table.week td.nowcell { background: var(--accent-soft); color: var(--accent-text); border-radius: 6px; font-weight: 700; }
   table.week td.clickable { cursor: pointer; }
   table.week td.clickable:hover { background: var(--line-soft); }
@@ -1074,8 +1077,7 @@ function renderWeek() {
   const firstP = plist.find(x => x.start);
   const lastP = plist.slice().reverse().find(x => x.end);
   const beforeSchool = todayCol >= 0 && firstP && nowMin < toMin(firstP.start);
-  html += '<tr class="breakrow' + (beforeSchool ? ' nowbreak' : '') + '">' +
-    '<td class="pcol">일과전</td><td colspan="5"></td></tr>';
+  html += breakRowHtml_('일과전', '0', '', beforeSchool, week, todayCol);
 
   for (let p = 1; p <= 7; p++) {
     const pi = plist.find(x => x.period === p) || { start: '', end: '' };
@@ -1084,9 +1086,8 @@ function renderWeek() {
     while (pending.length && pi.start && toMin(pending[0].start) < toMin(pi.start)) {
       const b = pending.shift();
       const isNowBreak = info.type === 'break' && info.item.label === b.label;
-      html += '<tr class="breakrow' + (isNowBreak ? ' nowbreak' : '') + '">' +
-        '<td class="pcol">' + esc(b.label) + '<span class="ptime">(' + b.start + '~' + b.end + ')</span></td>' +
-        '<td colspan="5"></td></tr>';
+      html += breakRowHtml_(b.label, String(90 + breaks().indexOf(b)),
+        '(' + b.start + '~' + b.end + ')', isNowBreak, week, todayCol);
     }
 
     const isNowRow = info.type === 'in' && info.period.period === p;
@@ -1134,15 +1135,13 @@ function renderWeek() {
   // 마지막 교시 뒤에 오는 항목(청소, 종례 등)
   pending.forEach(b => {
     const isNowBreak = info.type === 'break' && info.item.label === b.label;
-    html += '<tr class="breakrow' + (isNowBreak ? ' nowbreak' : '') + '">' +
-      '<td class="pcol">' + esc(b.label) + '<span class="ptime">(' + b.start + '~' + b.end + ')</span></td>' +
-      '<td colspan="5"></td></tr>';
+    html += breakRowHtml_(b.label, String(90 + breaks().indexOf(b)),
+      '(' + b.start + '~' + b.end + ')', isNowBreak, week, todayCol);
   });
 
   // 방과후
   const afterSchool = todayCol >= 0 && lastP && nowMin >= toMin(lastP.end);
-  html += '<tr class="breakrow' + (afterSchool ? ' nowbreak' : '') + '">' +
-    '<td class="pcol">방과후</td><td colspan="5"></td></tr>';
+  html += breakRowHtml_('방과후', '8', '', afterSchool, week, todayCol);
 
   html += '</tbody>';
   $('#weekTable').innerHTML = html;
@@ -1151,6 +1150,36 @@ function renderWeek() {
   if (changedCount) notes.push('<span class="legend"><span class="box"></span> 이번 주 변경 ' + changedCount + '칸</span>');
   notes.push('칸을 누르면 진도와 수업 기록을 쓸 수 있습니다.');
   $('#ttNote').innerHTML = notes.join(' · ');
+}
+
+// 일과전·점심·방과후 줄 (요일 칸마다 메모를 쓸 수 있다)
+function breakRowHtml_(label, periodCode, timeText, isNow, week, todayCol) {
+  const today = todayStr();
+  let html = '<tr class="breakrow' + (isNow ? ' nowbreak' : '') + '">' +
+    '<td class="pcol">' + esc(label) +
+    (timeText ? '<span class="ptime">' + timeText + '</span>' : '') + '</td>';
+
+  DAYS.forEach((day, i) => {
+    const key = label + ' ' + day;
+    const date = week ? addDays(week, i) : '';
+    const rec = date ? findRecord(key, date, periodCode) : null;
+    const duty = dutyAt(label, date);
+    const cls = ['cls', 'clickable', 'breakcell'];
+    if (i === todayCol) cls.push('today');
+    html += '<td class="' + cls.join(' ') + '" data-cls="' + esc(key) + '" data-day="' + i +
+      '" data-period="' + periodCode + '" data-free="1">' +
+      (duty ? '<span class="duty">' + esc(duty) + '</span>' : '') +
+      (rec ? '<span class="note-mark">' + esc((rec.memo || rec.progress || '').split('\n')[0]) + '</span>' : '') +
+      '</td>';
+  });
+  return html + '</tr>';
+}
+
+// 근무표(있으면)에서 그 날짜의 내 담당 찾기
+function dutyAt(label, date) {
+  const list = state.data.duties || [];
+  const hit = list.find(d => d.date === date && d.slot === label);
+  return hit ? (hit.text || '담당') : '';
 }
 
 // 주 시작일(월요일)에서 i번째 요일의 날짜 표시 (9/14 형태)
@@ -1316,10 +1345,14 @@ function latestProgress(cls) {
 }
 // 수업이 없는 칸의 기록 이름 (예: 빈시간 금5)
 function freeSlotKey(day, period) { return '빈시간 ' + day + period; }
-function isFreeSlot(cls) { return /^빈시간 /.test(String(cls || '')); }
+function isFreeSlot(cls) { return /^빈시간 /.test(String(cls || '')) || isBreakSlot(cls); }
+function isBreakSlot(cls) { return /^(일과전|방과후|점심|점심시간|청소|종례|등교|조회|아침|석식|야자)\s?[월화수목금]$/.test(String(cls || '')); }
 function freeSlotLabel(cls) {
   const m = String(cls).match(/^빈시간 ([월화수목금])(\d)$/);
-  return m ? m[1] + '요일 ' + m[2] + '교시 (수업 없음)' : '빈 시간';
+  if (m) return m[1] + '요일 ' + m[2] + '교시 (수업 없음)';
+  const b = String(cls).match(/^(.+?)\s?([월화수목금])$/);
+  if (b) return b[2] + '요일 ' + b[1];
+  return '빈 시간';
 }
 // 그 날짜·교시의 전체 공유 안내
 function sharedAt(date, period) {
@@ -1354,6 +1387,9 @@ function openClassModal(cls, date, period, focusId) {
   // 남이 올린 기록: 전체 안내는 공지 작성 권한이 있으면 고칠 수 있다
   const readOnly = !!(existing && existing.mine === false && !(existing.shared && canShare));
 
+  // 일과전·점심·방과후처럼 교시가 아닌 칸은 교시 선택 대신 고정 표시
+  const fixedPeriod = !/^[1-7]$/.test(String(base.period));
+  const slotName = fixedPeriod ? (String(cls).replace(/\s?[월화수목금]$/, '') || '시간') : '';
   let periodOpts = '';
   for (let p = 1; p <= 7; p++) {
     periodOpts += '<option value="' + p + '"' + (String(base.period) === String(p) ? ' selected' : '') + '>' + p + '교시</option>';
@@ -1371,7 +1407,12 @@ function openClassModal(cls, date, period, focusId) {
     '<form id="rForm" autocomplete="off">' +
       '<div class="form-2">' +
         '<div class="form-row"><label for="rDate">날짜</label><input class="input" type="date" id="rDate" value="' + esc(base.date) + '" required></div>' +
-        '<div class="form-row"><label for="rPeriod">교시</label><select class="input" id="rPeriod">' + periodOpts + '</select></div>' +
+        '<div class="form-row"><label for="rPeriod">교시</label>' +
+          (fixedPeriod
+            ? '<input class="input" value="' + esc(slotName) + '" disabled>' +
+              '<input type="hidden" id="rPeriod" value="' + esc(base.period) + '">'
+            : '<select class="input" id="rPeriod">' + periodOpts + '</select>') +
+        '</div>' +
       '</div>' +
       (free || isShared
         ? '<input type="hidden" id="rProg" value="' + esc(base.progress) + '">'
@@ -1423,7 +1464,7 @@ function openClassModal(cls, date, period, focusId) {
     if (ex && (!existing || ex.id !== existing.id)) openClassModal(cls, nd, np, ex.id);
   };
   $('#rDate').addEventListener('change', reload);
-  $('#rPeriod').addEventListener('change', reload);
+  if (!fixedPeriod) $('#rPeriod').addEventListener('change', reload);
 
   $('.rec-list') && $('.rec-list').addEventListener('click', (ev) => {
     const item = ev.target.closest('.rec-item');
