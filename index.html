@@ -1111,9 +1111,11 @@ function renderWeek() {
       if (changed) classes.push('changed');
       if (isToday && isNowRow) classes.push('nowcell');
       const key2 = cls || freeKey;
-      const prog = cls ? latestProgress(cls) : '';
-      const note = cls ? '' : latestNote(freeKey);
-      const rec = isToday ? findRecord(key2, today, p) : null;
+      // 기록은 그 날짜·교시에 쓴 것만 보여준다 (같은 수업이라도 다른 날 칸에는 나오지 않는다)
+      const rec = findRecord(key2, date || today, p);
+      const recText = rec ? cellNote_(rec) : '';
+      const prog = cls ? recText : '';
+      const note = cls ? '' : recText;
       html += '<td class="' + classes.join(' ') + '"' +
         ' data-cls="' + esc(key2) + '" data-day="' + i + '" data-period="' + p + '"' +
         (cls ? '' : ' data-free="1"') +
@@ -1365,6 +1367,11 @@ function latestNote(cls) {
   const r = recordsFor(cls).find(x => x.memo || x.progress);
   if (!r) return '';
   const t = (r.memo || r.progress).split('\n')[0];
+  return t.length > 14 ? t.slice(0, 14) + '…' : t;
+}
+// 시간표 칸에 한 줄로 보여줄 기록 요약 (진도 우선, 없으면 메모)
+function cellNote_(r) {
+  const t = String(r.progress || r.memo || '').split('\n')[0].trim();
   return t.length > 14 ? t.slice(0, 14) + '…' : t;
 }
 function findRecord(cls, date, period) {
