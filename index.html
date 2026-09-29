@@ -1380,7 +1380,6 @@ function dayDate(dayIdx) {
 function openClassModal(cls, date, period, focusId) {
   const existing = focusId ? records().find(r => r.id === focusId) : findRecord(cls, date, period);
   const base = existing || { date: date, period: String(period), progress: '', memo: '' };
-  const hist = recordsFor(cls);
   const latest = latestProgress(cls);
   const free = isFreeSlot(cls);
   const isShared = cls === '전체' || (existing && existing.shared);
@@ -1436,20 +1435,7 @@ function openClassModal(cls, date, period, focusId) {
         '<button class="btn" id="rClose" type="button">닫기</button>' +
         (readOnly ? '' : '<button class="btn btn-primary" id="rSave" type="submit">' + (existing ? '저장' : '기록') + '</button>') +
       '</div>' +
-    '</form>' +
-    '<div class="rec-hist">' +
-      '<div class="rec-hist-title">지난 기록 ' + hist.length + '건</div>' +
-      (hist.length
-        ? '<ul class="rec-list">' + hist.map(r =>
-            '<li class="rec-item' + (existing && r.id === existing.id ? ' cur' : '') + '" data-id="' + esc(r.id) + '">' +
-              '<div class="rec-when">' + shortDate(r.date) + ' ' + esc(r.period) + '교시</div>' +
-              '<div class="rec-body">' +
-                (r.progress ? '<div class="rec-prog">' + esc(r.progress) + '</div>' : '') +
-                (r.memo ? '<div class="rec-memo">' + linkify(r.memo) + '</div>' : '') +
-              '</div>' +
-            '</li>').join('') + '</ul>'
-        : '<div class="empty-msg">아직 기록이 없습니다.</div>') +
-    '</div>'
+    '</form>'
   );
 
   $('#rClose').onclick = closeModal;
