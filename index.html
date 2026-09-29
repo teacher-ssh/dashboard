@@ -1121,9 +1121,10 @@ function renderWeek() {
       if (changed) classes.push('changed');
       if (isToday && isNowRow) classes.push('nowcell');
       const key2 = cls || freeKey;
-      const prog = cls ? latestProgress(cls) : '';
-      const note = cls ? '' : latestNote(freeKey);
-      const rec = isToday ? findRecord(key2, today, p) : null;
+      // 그 날짜, 그 교시에 쓴 기록만 보여 준다
+      const rec = date ? findRecord(key2, date, p) : null;
+      const prog = rec ? (rec.progress || '') : '';
+      const note = (rec && !prog) ? (rec.memo || '').split('\n')[0] : '';
       html += '<td class="' + classes.join(' ') + '"' +
         ' data-cls="' + esc(key2) + '" data-day="' + i + '" data-period="' + p + '"' +
         (cls ? '' : ' data-free="1"') +
