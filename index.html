@@ -462,6 +462,13 @@
   .check { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; }
   .check input { width: 16px; height: 16px; accent-color: var(--red); }
   .form-err { color: var(--red); font-size: 13px; min-height: 19px; margin-top: 4px; }
+  .duty-pop { list-style: none; margin: 14px 0 4px; padding: 0; }
+  .duty-pop li { display: flex; gap: 12px; align-items: baseline; padding: 10px 12px; border-radius: 10px;
+    background: var(--accent-soft); margin-bottom: 8px; }
+  .duty-pop li.past { background: var(--line-soft); color: var(--sub); }
+  .duty-pop .dp-time { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+  .duty-pop .dp-text { flex: 1; }
+  .duty-pop .dp-done { font-size: 12px; color: var(--sub); }
   .rec-hist { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
   .rec-hist-title { font-size: 13px; font-weight: 700; color: var(--sub); margin-bottom: 6px; }
   .rec-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
@@ -847,6 +854,7 @@ function enterApp() {
   if (!state.calYear) { state.calYear = now.getFullYear(); state.calMonth = now.getMonth(); }
   showView('app');
   renderAll();
+  maybeDutyPopup();
 }
 
 async function refresh(silent) {
@@ -1175,6 +1183,48 @@ function breakRowHtml_(label, periodCode, timeText, isNow, week, todayCol) {
       '</td>';
   });
   return html + '</tr>';
+}
+
+/* ── 접속했을 때 오늘 근무 알리기 (하루 한 번) ── */
+
+function dutyPopupKey() { return 'ssgh_duty_' + todayStr(); }
+
+function maybeDutyPopup() {
+  let seen = null;
+  try {
+    seen = localStorage.getItem(dutyPopupKey());
+    for (let i = localStorage.length - 1; i >= 0; i--) {      // 지난 날짜 표시는 지운다
+      const k = localStorage.key(i);
+      if (k && k.indexOf('ssgh_duty_') === 0 && k !== dutyPopupKey()) localStorage.removeItem(k);
+    }
+  } catch (e) { }
+  if (seen) return;
+
+  const today = todayStr();
+  const list = (state.data.duties || []).filter(d => d.date === today);
+  if (!list.length) return;
+
+  const now = hm(new Date());
+  const rows = list.map(d => {
+    const time = (d.start && d.end) ? (d.start + ' ~ ' + d.end) : '';
+    const past = !!(d.end && now > d.end);
+    return '<li' + (past ? ' class="past"' : '') + '>' +
+      '<span class="dp-time">' + esc(time || '시간 미정') + '</span>' +
+      '<span class="dp-text">' + esc(d.text) + (past ? ' <span class="dp-done">(끝남)</span>' : '') + '</span>' +
+      '</li>';
+  }).join('');
+
+  openModal(
+    '<h2>오늘 근무가 있습니다</h2>' +
+    '<div class="meta">' + shortDate(today) + ' · ' + list.length + '건</div>' +
+    '<ul class="duty-pop">' + rows + '</ul>' +
+    '<div class="modal-actions"><button class="btn btn-primary" id="dpOk" type="button">확인</button></div>'
+  );
+
+  $('#dpOk').onclick = () => {
+    try { localStorage.setItem(dutyPopupKey(), '1'); } catch (e) { }
+    closeModal();
+  };
 }
 
 // 근무표(있으면)에서 그 날짜의 내 담당 찾기
