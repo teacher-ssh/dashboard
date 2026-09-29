@@ -283,7 +283,9 @@
   table.week tr.breakrow td.pcol { letter-spacing: 0; }
   table.week tr.breakrow td.breakcell { letter-spacing: 0; padding: 5px 4px; }
   table.week tr.breakrow td.breakcell:hover { background: #efe7d8; }
-  table.week td .duty { display: block; font-size: 12px; color: var(--accent-text); font-weight: 600; }
+  table.week td .duty { display: inline-block; font-size: 12px; font-weight: 700; color: var(--red);
+    background: #fdeee8; border: 1px solid #f0cfc0; border-radius: 6px; padding: 1px 6px; margin: 1px 0; }
+  table.week tr.breakrow td.cls:has(.duty) { background: #fdf4f0; }
   table.week td.nowcell { background: var(--accent-soft); color: var(--accent-text); border-radius: 6px; font-weight: 700; }
   table.week td.clickable { cursor: pointer; }
   table.week td.clickable:hover { background: var(--line-soft); }
@@ -462,6 +464,18 @@
   .check { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; }
   .check input { width: 16px; height: 16px; accent-color: var(--red); }
   .form-err { color: var(--red); font-size: 13px; min-height: 19px; margin-top: 4px; }
+  .duty-wrap { overflow-x: auto; }
+  table.dutytable { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.dutytable th, table.dutytable td { border: 1px solid var(--line); padding: 7px 8px; text-align: center;
+    vertical-align: middle; }
+  table.dutytable thead th { background: var(--accent-soft); font-weight: 700; white-space: nowrap; }
+  table.dutytable thead th .dt-time { display: block; font-size: 11px; font-weight: 500; color: var(--sub); }
+  table.dutytable td.dcol { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table.dutytable tr.weekend td.dcol { color: var(--red); }
+  table.dutytable tr.today { background: var(--accent-soft); }
+  table.dutytable td .who { display: block; line-height: 1.5; }
+  table.dutytable td .who.me { color: var(--red); font-weight: 700; }
+  table.dutytable td .pl { font-size: 11px; color: var(--sub); }
   .duty-pop { list-style: none; margin: 14px 0 4px; padding: 0; }
   .duty-pop li { display: flex; gap: 12px; align-items: baseline; padding: 10px 12px; border-radius: 10px;
     background: var(--accent-soft); margin-bottom: 8px; }
@@ -568,6 +582,7 @@
   <nav class="tabs" id="tabs">
     <button class="tab on" type="button" data-tab="timetable">시간표</button>
     <button class="tab" type="button" data-tab="notice">일정</button>
+    <button class="tab" type="button" data-tab="duty">근무표</button>
     <button class="tab" type="button" data-tab="links">바로가기</button>
   </nav>
 
@@ -645,6 +660,24 @@
     </section>
 
     <!-- 바로가기 -->
+    <section class="panel hidden" data-panel="duty">
+      <div class="col wide">
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">한 달 근무표</h3>
+            <span class="card-sub" id="dutySub"></span>
+            <span class="grow"></span>
+            <div class="meal-tabs">
+              <button class="btn" id="dutyPrev" type="button" aria-label="이전 달">‹</button>
+              <button class="btn" id="dutyThis" type="button">이번 달</button>
+              <button class="btn" id="dutyNext" type="button" aria-label="다음 달">›</button>
+            </div>
+          </div>
+          <div id="dutyBody"></div>
+        </div>
+      </div>
+    </section>
+
     <section class="panel hidden" data-panel="links">
       <div class="col wide">
         <div id="linkCard">
@@ -1186,6 +1219,83 @@ function breakRowHtml_(label, periodCode, timeText, isNow, week, todayCol) {
   return html + '</tr>';
 }
 
+/* ── 근무표 탭 (한 달 전체) ── */
+
+const dutyCache = {};
+
+function dutyMonthText(offset) {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + (offset || 0));
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1);
+}
+
+function moveDutyMonth(step) {
+  state.dutyOffset = (state.dutyOffset || 0) + step;
+  if (state.dutyOffset < -12) state.dutyOffset = -12;
+  if (state.dutyOffset > 12) state.dutyOffset = 12;
+  renderDutyTable();
+}
+
+async function renderDutyTable() {
+  const month = dutyMonthText(state.dutyOffset || 0);
+  const body = $('#dutyBody');
+  $('#dutySub').textContent = month.replace('-', '년 ') + '월';
+
+  if (!dutyCache[month]) {
+    body.innerHTML = '<div class="empty-msg">불러오는 중…</div>';
+    try {
+      dutyCache[month] = await api('dutyMonth', { key: state.key, month: month });
+    } catch (e) {
+      body.innerHTML = '<div class="empty-msg">' + esc(e.message || '불러오지 못했습니다.') + '</div>';
+      return;
+    }
+    if (dutyMonthText(state.dutyOffset || 0) !== month) return;   // 그 사이 달을 바꿨으면 버린다
+  }
+
+  const data = dutyCache[month];
+  const kinds = data.kinds || [];
+  const days = data.days || [];
+
+  if (!kinds.length || !days.length) {
+    body.innerHTML = '<div class="empty-msg">' + month.replace('-', '년 ') + '월 근무표가 아직 없습니다.<br>' +
+      '<span class="card-sub">드라이브의 근무표 폴더에 「근무표 ' + month + '」 파일이 있어야 합니다.</span></div>';
+    return;
+  }
+
+  const myName = (state.data.me && state.data.me.name) || '';
+  const today = todayStr();
+
+  let html = '<div class="duty-wrap"><table class="dutytable"><thead><tr>' +
+    '<th>날짜</th><th>요일</th>' +
+    kinds.map(k => '<th>' + esc(k.name) +
+      ((k.start && k.end) ? '<span class="dt-time">' + esc(k.start + '~' + k.end) + '</span>' : '') +
+      '</th>').join('') +
+    '</tr></thead><tbody>';
+
+  days.forEach(d => {
+    const dt = parseYmd(d.date);
+    const dow = dt.getDay();
+    const cls = [];
+    if (dow === 0 || dow === 6) cls.push('weekend');
+    if (d.date === today) cls.push('today');
+    html += '<tr' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '>' +
+      '<td class="dcol">' + (dt.getMonth() + 1) + '.' + dt.getDate() + '</td>' +
+      '<td class="dcol">' + DOW[dow] + '</td>' +
+      kinds.map(k => {
+        const list = d.cells[k.name] || [];
+        if (!list.length) return '<td></td>';
+        return '<td>' + list.map(x =>
+          '<span class="who' + (x.who === myName ? ' me' : '') + '">' + esc(x.who) +
+          (x.place ? ' <span class="pl">' + esc(x.place) + '</span>' : '') + '</span>').join('') + '</td>';
+      }).join('') + '</tr>';
+  });
+
+  html += '</tbody></table></div>' +
+    '<div class="tt-note">본인 근무는 붉게 표시됩니다. · 근무가 없는 날은 나오지 않습니다.</div>';
+  body.innerHTML = html;
+}
+
 /* ── 접속했을 때 오늘 근무 알리기 (하루 한 번) ── */
 
 function dutyPopupKey() { return 'ssgh_duty_' + todayStr(); }
@@ -1244,7 +1354,7 @@ function dayNum(weekStart, i) {
 
 /* ── 메뉴(탭) 전환 ── */
 
-const TABS = ['timetable', 'notice', 'links'];
+const TABS = ['timetable', 'duty', 'notice', 'links'];
 const TAB_KEY = 'ssgh_dash_tab';
 
 function switchTab(name, remember) {
@@ -1261,6 +1371,7 @@ function switchTab(name, remember) {
     if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
   }
   window.scrollTo({ top: 0 });
+  if (name === 'duty' && state.data) renderDutyTable();
 }
 
 function initTab() {
@@ -1857,6 +1968,10 @@ window.addEventListener('hashchange', () => {
   const name = (location.hash || '').replace('#', '');
   if (TABS.indexOf(name) >= 0 && name !== state.tab) switchTab(name, false);
 });
+
+$('#dutyPrev').onclick = () => moveDutyMonth(-1);
+$('#dutyNext').onclick = () => moveDutyMonth(1);
+$('#dutyThis').onclick = () => { state.dutyOffset = 0; renderDutyTable(); };
 
 $('#ttRefresh').onclick = async () => {
   const btn = $('#ttRefresh');
