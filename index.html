@@ -283,6 +283,7 @@
   table.week tr.breakrow td.pcol { letter-spacing: 0; }
   table.week tr.breakrow td.breakcell { letter-spacing: 0; padding: 5px 4px; }
   table.week tr.breakrow td.breakcell:hover { background: #efe7d8; }
+  table.week td.filled .duty, table.week td.empty-cell .duty { margin-top: 3px; font-size: 11px; }
   table.week td .duty { display: inline-block; font-size: 12px; font-weight: 700; color: var(--red);
     background: #fdeee8; border: 1px solid #f0cfc0; border-radius: 6px; padding: 1px 6px; margin: 1px 0; }
   table.week tr.breakrow td.cls:has(.duty) { background: #fdf4f0; }
@@ -1156,6 +1157,7 @@ function renderWeek() {
       const key2 = cls || freeKey;
       // 그 날짜, 그 교시에 쓴 기록만 보여 준다
       const rec = date ? findRecord(key2, date, p) : null;
+      const pduty = date ? dutyAtPeriod(date, p) : '';
       const prog = rec ? (rec.progress || '') : '';
       const note = (rec && !prog) ? (rec.memo || '').split('\n')[0] : '';
       html += '<td class="' + classes.join(' ') + '"' +
@@ -1165,6 +1167,7 @@ function renderWeek() {
         (cls ? esc(cls) : '') +
         (rec ? '<span class="rec-done" title="기록함">✓</span>' : '') +
         (changed ? '<span class="chg">변경</span>' : '') +
+        (pduty ? '<span class="duty">' + esc(pduty) + '</span>' : '') +
         (prog ? '<span class="wprog">' + esc(prog) + '</span>' : '') +
         (note ? '<span class="note-mark">' + esc(note) + '</span>' : '') +
         (date ? sharedAt(date, p).map(sr =>
@@ -1317,7 +1320,11 @@ function maybeDutyPopup() {
 
   const now = hm(new Date());
   const rows = list.map(d => {
-    const time = (d.start && d.end) ? (d.start + ' ~ ' + d.end) : '';
+    let time = (d.start && d.end) ? (d.start + ' ~ ' + d.end) : '';
+    if (!time && d.slot === '교시' && d.period) {
+      const pi = (state.data.periods || []).find(x => Number(x.period) === Number(d.period));
+      time = d.period + '교시' + (pi && pi.start ? ' (' + pi.start + ')' : '');
+    }
     const past = !!(d.end && now > d.end);
     return '<li' + (past ? ' class="past"' : '') + '>' +
       '<span class="dp-time">' + esc(time || '시간 미정') + '</span>' +
@@ -1343,6 +1350,14 @@ function dutyAt(label, date) {
   const list = state.data.duties || [];
   const hit = list.find(d => d.date === date && d.slot === label);
   return hit ? (hit.text || '담당') : '';
+}
+
+// 교시마다 정해지는 근무 (SLAT 감독 등)
+function dutyAtPeriod(date, period) {
+  const list = state.data.duties || [];
+  const hits = list.filter(d => d.date === date && d.slot === '교시' && Number(d.period) === Number(period));
+  if (!hits.length) return '';
+  return hits.map(d => (d.duty || '근무') + (d.place ? ' ' + d.place.replace(/^\d{1,2}교시\s*/, '') : '')).join(' / ');
 }
 
 // 주 시작일(월요일)에서 i번째 요일의 날짜 표시 (9/14 형태)
