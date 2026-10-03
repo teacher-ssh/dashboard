@@ -1112,6 +1112,7 @@ async function refresh(silent) {
   try {
     state.data = await api('data', { key: state.key });
     renderAll();
+    refreshDutyTab();
     if (!silent) toast('최신 내용으로 새로고침했습니다.');
   } catch (e) {
     if (AUTH_ERRORS.indexOf(e.code) >= 0) {
@@ -1453,18 +1454,23 @@ function moveDutyMonth(step) {
   renderDutyTable();
 }
 
-async function renderDutyTable() {
+// force : 새로고침 때. 보던 표는 그대로 두고 뒤에서 새로 받아 바꿔 끼운다
+async function renderDutyTable(force) {
   const month = dutyMonthText(state.dutyOffset || 0);
   const body = $('#dutyBody');
   $('#dutySub').textContent = month.replace('-', '년 ') + '월';
 
-  if (!dutyCache[month]) {
-    body.innerHTML = '<div class="empty-msg">불러오는 중…</div>';
+  if (!dutyCache[month] || force) {
+    const had = !!dutyCache[month];
+    if (!had) body.innerHTML = '<div class="empty-msg">불러오는 중…</div>';
     try {
       dutyCache[month] = await api('dutyMonth', { key: state.key, month: month });
     } catch (e) {
-      body.innerHTML = '<div class="empty-msg">' + esc(e.message || '불러오지 못했습니다.') + '</div>';
-      return;
+      if (!had) {
+        body.innerHTML = '<div class="empty-msg">' + esc(e.message || '불러오지 못했습니다.') + '</div>';
+        return;
+      }
+      // 새로 받기에 실패하면 보던 표를 그대로 둔다
     }
     if (dutyMonthText(state.dutyOffset || 0) !== month) return;   // 그 사이 달을 바꿨으면 버린다
   }
@@ -1510,6 +1516,14 @@ async function renderDutyTable() {
   html += '</tbody></table></div>' +
     '<div class="tt-note">본인 근무는 붉게 표시됩니다. · 근무가 없는 날은 나오지 않습니다.</div>';
   body.innerHTML = html;
+}
+
+// 새로고침 때 근무표 탭도 새로 받는다. 지금 보는 달 말고는 기억을 비워 다시 열 때 새로 받게 한다
+function refreshDutyTab() {
+  const cur = dutyMonthText(state.dutyOffset || 0);
+  Object.keys(dutyCache).forEach(k => { if (k !== cur) delete dutyCache[k]; });
+  if (state.tab === 'duty') renderDutyTable(true);
+  else delete dutyCache[cur];
 }
 
 /* ── 접속했을 때 오늘 근무 알리기 (하루 한 번) ── */
