@@ -291,9 +291,8 @@
   /* 색 고르기 */
   .theme-pick { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
   .theme-dot {
-    width: 18px; height: 18px; border-radius: 50%;
-    border: none; padding: 0; cursor: pointer;
-    box-shadow: 0 0 0 1px var(--head-btn-line);
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, .18); padding: 0; cursor: pointer;
   }
   .theme-dot:hover { transform: scale(1.12); }
   .theme-dot.on { box-shadow: 0 0 0 2px var(--head-bg-solid), 0 0 0 4px var(--head-text); }
@@ -709,7 +708,7 @@
     .brand-title { font-size: 15px; }
     .clock, .me { display: none; }
     .theme-pick { gap: 6px; padding: 0; }
-    .theme-dot { width: 16px; height: 16px; }
+    .theme-dot { width: 20px; height: 20px; }
     .icon-btn .lbl { display: none; }
     .card { padding: 16px; }
     .cal-cell { min-height: 54px; padding: 3px; }
@@ -957,10 +956,11 @@ function toast(msg, isError) {
 
 /* ───────────── 화면 색 (기기마다 따로 기억) ───────────── */
 const THEME_KEY = 'ssgh_theme';
+// 동그라미는 실제 화면처럼 두 색으로 나눠 보여 준다 : [강조·머리말 색, 바탕 색]
 const THEMES = [
-  { id: 'cream',    name: '크림·초록',     dot: '#3f6b52' },
-  { id: 'blue',     name: '라이온즈 블루', dot: '#0066b3' },
-  { id: 'lavender', name: '라벤더',        dot: '#5b4b9a' }
+  { id: 'cream',    name: '크림·초록',     dot: ['#3f6b52', '#faf5ec'] },
+  { id: 'blue',     name: '라이온즈 블루', dot: ['#074ca1', '#f3f6fa'] },
+  { id: 'lavender', name: '라벤더',        dot: ['#5b4b9a', '#f6f5fa'] }
 ];
 
 function currentTheme() {
@@ -981,7 +981,8 @@ function renderThemePick() {
   $('#themePick').innerHTML = THEMES.map(t =>
     '<button class="theme-dot' + (t.id === cur ? ' on' : '') + '" type="button"' +
     ' data-theme="' + t.id + '" title="' + t.name + '" aria-label="' + t.name + ' 색으로 바꾸기"' +
-    ' aria-pressed="' + (t.id === cur) + '" style="background:' + t.dot + '"></button>').join('');
+    ' aria-pressed="' + (t.id === cur) + '"' +
+    ' style="background:linear-gradient(135deg,' + t.dot[0] + ' 50%,' + t.dot[1] + ' 50%)"></button>').join('');
 }
 
 /* ───────────── 서버 통신 ───────────── */
