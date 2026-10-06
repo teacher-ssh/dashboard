@@ -683,7 +683,8 @@
   .rec-sec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 14px; }
   .rec-sec-head .grow, .rec-sec-actions .grow { flex: 1; }
   .rec-sec-actions { display: flex; gap: 8px; align-items: center; }
-  .rec-sec textarea.input { min-height: 90px; }
+  /* 글 양에 맞춰 늘어남 (최소 4줄, 최대 화면 높이의 40%) */
+  .rec-sec textarea.input { min-height: 104px; max-height: 40vh; resize: vertical; line-height: 1.6; overflow-y: auto; }
   .rec-sec .share-box a { color: var(--red); }
   .rec-hist { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
   .rec-hist-title { font-size: 13px; font-weight: 700; color: var(--sub); margin-bottom: 6px; }
@@ -1865,7 +1866,7 @@ function openClassModal(cls, date, period, editId) {
     '<form id="sForm" autocomplete="off">' +
       '<div class="form-row"><label for="sMemo">' +
         (editing ? (editing.mine ? '내가 쓴 전체 안내' : esc(editing.author || '') + ' 선생님의 안내 고치기') : '새 전체 안내') +
-      '</label><textarea class="input" id="sMemo" maxlength="2000" style="min-height:80px" placeholder="예: 3교시 학년 전체 강당 집합">' +
+      '</label><textarea class="input" id="sMemo" maxlength="2000" placeholder="예: 3교시 학년 전체 강당 집합">' +
         esc(editing ? (editing.memo || editing.progress || '') : '') + '</textarea></div>' +
       '<div class="form-err" id="sErr"></div>' +
       '<div class="rec-sec-actions">' +
@@ -1899,6 +1900,18 @@ function openClassModal(cls, date, period, editId) {
   );
 
   $('#rClose').onclick = closeModal;
+
+  // 입력 칸 높이를 글 양에 맞춘다 (열 때 한 번, 글을 쓸 때마다)
+  const fit = (ta) => {
+    ta.style.height = 'auto';
+    const max = Math.round(window.innerHeight * 0.4);
+    ta.style.height = Math.min(ta.scrollHeight + 2, max) + 'px';
+  };
+  $('#modal').querySelectorAll('.rec-sec textarea').forEach(ta => {
+    fit(ta);
+    ta.addEventListener('input', () => fit(ta));
+  });
+
   if ($('#mProg')) $('#mProg').focus(); else if ($('#mMemo')) $('#mMemo').focus(); else if ($('#sMemo')) $('#sMemo').focus();
 
   // 날짜·교시를 바꾸면 그 시간의 기록으로 창을 다시 연다
