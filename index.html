@@ -677,6 +677,14 @@
   .duty-pop .dp-time { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
   .duty-pop .dp-text { flex: 1; }
   .duty-pop .dp-done { font-size: 12px; color: var(--sub); }
+  /* 기록 창 : 내 메모 / 전체 안내 */
+  .rec-sec { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 10px; margin-top: 12px; background: var(--card); }
+  .rec-sec.shared { border-color: var(--duty-line); }
+  .rec-sec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 14px; }
+  .rec-sec-head .grow, .rec-sec-actions .grow { flex: 1; }
+  .rec-sec-actions { display: flex; gap: 8px; align-items: center; }
+  .rec-sec textarea.input { min-height: 90px; }
+  .rec-sec .share-box a { color: var(--red); }
   .rec-hist { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
   .rec-hist-title { font-size: 13px; font-weight: 700; color: var(--sub); margin-bottom: 6px; }
   .rec-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
@@ -1794,149 +1802,215 @@ function dayDate(dayIdx) {
   return addDays(shownWeek(), dayIdx);
 }
 
-function openClassModal(cls, date, period, focusId) {
-  const existing = focusId ? records().find(r => r.id === focusId) : findRecord(cls, date, period);
-  const base = existing || { date: date, period: String(period), progress: '', memo: '' };
-  const latest = latestProgress(cls);
-  const free = isFreeSlot(cls);
-  const isShared = cls === '전체' || (existing && existing.shared);
+/**
+ * 칸을 눌렀을 때 뜨는 기록 창. 두 부분으로 나뉜다.
+ *  · 내 메모   : 나만 보임 (진도 · 메모)
+ *  · 전체 안내 : 모든 교직원에게 보임. 공지 권한자만 쓰고 고칠 수 있음
+ * 둘은 따로 저장되므로 한쪽을 고쳐도 다른 쪽은 그대로다.
+ * editId : 전체 안내 중 지금 고치고 있는 것 (없으면 내 것 또는 새 안내)
+ */
+function openClassModal(cls, date, period, editId) {
+  if (cls === '전체') cls = '';                    // 예전 방식으로 불린 경우
   const canShare = !!(state.data.me && state.data.me.canPost);
-  const notices = sharedAt(base.date, base.period).filter(r => !existing || r.id !== existing.id);
-  // 남이 올린 기록: 전체 안내는 공지 작성 권한이 있으면 고칠 수 있다
-  const readOnly = !!(existing && existing.mine === false && !(existing.shared && canShare));
+  const free = isFreeSlot(cls);
+  const mine = cls ? findRecord(cls, date, period) : null;
+  const shared = sharedAt(date, period);
+  const latest = cls && !free ? latestProgress(cls) : '';
+
+  // 고칠 전체 안내 : 고르게 한 것 → 내가 쓴 것 → 없음(새로 쓰기)
+  let editing = null;
+  if (canShare) {
+    if (editId) editing = shared.find(r => r.id === editId) || null;
+    if (!editing && editId !== 'new') editing = shared.find(r => r.mine) || null;
+  }
+  const others = shared.filter(r => !editing || r.id !== editing.id);
 
   // 일과전·점심·방과후처럼 교시가 아닌 칸은 교시 선택 대신 고정 표시
-  const fixedPeriod = !/^[1-7]$/.test(String(base.period));
+  const fixedPeriod = !/^[1-7]$/.test(String(period));
   const slotName = fixedPeriod ? (String(cls).replace(/\s?[월화수목금]$/, '') || '시간') : '';
   let periodOpts = '';
   for (let p = 1; p <= 7; p++) {
-    periodOpts += '<option value="' + p + '"' + (String(base.period) === String(p) ? ' selected' : '') + '>' + p + '교시</option>';
+    periodOpts += '<option value="' + p + '"' + (String(period) === String(p) ? ' selected' : '') + '>' + p + '교시</option>';
   }
 
+  const title = !cls ? '전체 안내' : (free ? freeSlotLabel(cls) : cls);
+
+  // ── 내 메모
+  const mineHtml = !cls ? '' :
+    '<form class="rec-sec" id="mForm" autocomplete="off">' +
+      '<div class="rec-sec-head"><b>내 메모</b><span class="tag">나만 보임</span>' +
+        (latest ? '<span class="grow"></span><span class="card-sub">현재 진도 : ' + esc(latest) + '</span>' : '') +
+      '</div>' +
+      (free ? '' :
+        '<div class="form-row"><label for="mProg">진도</label><input class="input" id="mProg" maxlength="100" placeholder="예: Ⅱ-2 뉴턴 제2법칙 p.54" value="' + esc(mine ? mine.progress : '') + '"></div>') +
+      '<div class="form-row"><label for="mMemo">메모</label><textarea class="input" id="mMemo" maxlength="2000" placeholder="' +
+        (free ? '업무, 상담, 준비할 일 등' : '수업 내용, 과제, 다음 시간 준비물 등') + '">' + esc(mine ? mine.memo : '') + '</textarea></div>' +
+      '<div class="form-err" id="mErr"></div>' +
+      '<div class="rec-sec-actions">' +
+        (mine ? '<button class="btn btn-danger" id="mDel" type="button">지우기</button>' : '') +
+        '<span class="grow"></span>' +
+        '<button class="btn btn-primary" id="mSave" type="submit">' + (mine ? '내 메모 저장' : '내 메모 기록') + '</button>' +
+      '</div>' +
+    '</form>';
+
+  // ── 전체 안내 : 다른 안내 목록
+  const othersHtml = others.map(r =>
+    '<div class="share-box"><b>전체 안내</b> · ' + linkify(r.memo || r.progress || '') +
+      '<div class="who">' + esc(r.author || '') +
+        (canShare ? ' · <a href="#" class="share-edit" data-id="' + esc(r.id) + '">고치기</a>' : '') +
+      '</div></div>').join('');
+
+  // ── 전체 안내 : 쓰는 칸 (공지 권한자만)
+  const sharedForm = !canShare ? '' :
+    '<form id="sForm" autocomplete="off">' +
+      '<div class="form-row"><label for="sMemo">' +
+        (editing ? (editing.mine ? '내가 쓴 전체 안내' : esc(editing.author || '') + ' 선생님의 안내 고치기') : '새 전체 안내') +
+      '</label><textarea class="input" id="sMemo" maxlength="2000" style="min-height:80px" placeholder="예: 3교시 학년 전체 강당 집합">' +
+        esc(editing ? (editing.memo || editing.progress || '') : '') + '</textarea></div>' +
+      '<div class="form-err" id="sErr"></div>' +
+      '<div class="rec-sec-actions">' +
+        (editing ? '<button class="btn btn-danger" id="sDel" type="button">지우기</button>' : '') +
+        (editing ? '<button class="btn" id="sNew" type="button">+ 새 안내</button>' : '') +
+        '<span class="grow"></span>' +
+        '<button class="btn btn-primary" id="sSave" type="submit">' + (editing ? '전체 안내 저장' : '전체 안내 올리기') + '</button>' +
+      '</div>' +
+    '</form>';
+
+  const sharedHtml = (!canShare && !shared.length) ? '' :
+    '<div class="rec-sec shared">' +
+      '<div class="rec-sec-head"><b>전체 안내</b><span class="tag imp">모든 교직원에게 보임</span></div>' +
+      othersHtml +
+      sharedForm +
+    '</div>';
+
   openModal(
-    '<h2>' + esc(isShared ? '전체 안내' : (free ? freeSlotLabel(cls) : cls)) + '</h2>' +
-    '<div class="meta">' + (isShared
-      ? '모든 교직원 화면에 표시되는 안내입니다.'
-      : free
-        ? '수업이 없는 시간입니다. 업무나 할 일을 적어 두세요.'
-        : '현재 진도: ' + (latest ? esc(latest) : '기록 없음')) + '</div>' +
-    notices.map(n => '<div class="share-box"><b>전체 안내</b> · ' + esc(shareText(n)) +
-      '<div class="who">' + esc(n.author || '') + '</div></div>').join('') +
-    '<form id="rForm" autocomplete="off">' +
-      '<div class="form-2">' +
-        '<div class="form-row"><label for="rDate">날짜</label><input class="input" type="date" id="rDate" value="' + esc(base.date) + '" required></div>' +
-        '<div class="form-row"><label for="rPeriod">교시</label>' +
-          (fixedPeriod
-            ? '<input class="input" value="' + esc(slotName) + '" disabled>' +
-              '<input type="hidden" id="rPeriod" value="' + esc(base.period) + '">'
-            : '<select class="input" id="rPeriod">' + periodOpts + '</select>') +
-        '</div>' +
+    '<h2>' + esc(title) + '</h2>' +
+    '<div class="form-2" style="margin-top:10px">' +
+      '<div class="form-row"><label for="rDate">날짜</label><input class="input" type="date" id="rDate" value="' + esc(date) + '"></div>' +
+      '<div class="form-row"><label for="rPeriod">교시</label>' +
+        (fixedPeriod
+          ? '<input class="input" value="' + esc(slotName) + '" disabled>' +
+            '<input type="hidden" id="rPeriod" value="' + esc(period) + '">'
+          : '<select class="input" id="rPeriod">' + periodOpts + '</select>') +
       '</div>' +
-      (free || isShared
-        ? '<input type="hidden" id="rProg" value="' + esc(base.progress) + '">'
-        : '<div class="form-row"><label for="rProg">진도</label><input class="input" id="rProg" maxlength="100" placeholder="예: Ⅱ-2 뉴턴 제2법칙 p.54" value="' + esc(base.progress) + '"></div>') +
-      '<div class="form-row"><label for="rMemo">메모</label><textarea class="input" id="rMemo" maxlength="2000" placeholder="' +
-        (free ? '업무, 상담, 준비할 일 등' : '수업 내용, 과제, 다음 시간 준비물 등') + '">' + esc(base.memo) + '</textarea></div>' +
-      (canShare
-        ? '<label class="check" style="margin-top:6px"><input type="checkbox" id="rShare"' +
-          (isShared ? ' checked' : '') + '> 전체 교직원에게 보이는 안내로 저장</label>'
-        : '') +
-      '<div class="form-err" id="rErr"></div>' +
-      '<div class="modal-actions" id="rActions">' +
-        (existing && !readOnly ? '<div class="left"><button class="btn btn-danger" id="rDel" type="button">기록 삭제</button></div>' : '') +
-        (readOnly
-          ? '<span class="card-sub" style="margin-right:auto">작성자: ' + esc(existing.author || '') + ' · 수정은 작성자만 가능합니다</span>'
-          : (existing && existing.mine === false
-              ? '<span class="card-sub" style="margin-right:auto">작성자: ' + esc(existing.author || '') + '</span>'
-              : '')) +
-        '<button class="btn" id="rClose" type="button">닫기</button>' +
-        (readOnly ? '' : '<button class="btn btn-primary" id="rSave" type="submit">' + (existing ? '저장' : '기록') + '</button>') +
-      '</div>' +
-    '</form>'
+    '</div>' +
+    mineHtml + sharedHtml +
+    '<div class="modal-actions"><button class="btn" id="rClose" type="button">닫기</button></div>'
   );
 
   $('#rClose').onclick = closeModal;
-  if (readOnly) {
-    ['#rDate', '#rPeriod', '#rMemo', '#rShare'].forEach(sel => { if ($(sel)) $(sel).disabled = true; });
-  } else {
-    ((free || isShared) ? $('#rMemo') : $('#rProg')).focus();
-  }
+  if ($('#mProg')) $('#mProg').focus(); else if ($('#mMemo')) $('#mMemo').focus(); else if ($('#sMemo')) $('#sMemo').focus();
 
-  // 날짜·교시를 바꿨을 때 그 시간에 기록이 있으면 불러오기
+  // 날짜·교시를 바꾸면 그 시간의 기록으로 창을 다시 연다
   const reload = () => {
     const nd = $('#rDate').value, np = $('#rPeriod').value;
-    const ex = findRecord(cls, nd, np);
-    if (ex && (!existing || ex.id !== existing.id)) openClassModal(cls, nd, np, ex.id);
+    if (nd) openClassModal(cls || '전체', nd, np);
   };
   $('#rDate').addEventListener('change', reload);
   if (!fixedPeriod) $('#rPeriod').addEventListener('change', reload);
 
-  $('.rec-list') && $('.rec-list').addEventListener('click', (ev) => {
-    const item = ev.target.closest('.rec-item');
-    if (!item) return;
-    const r = records().find(x => x.id === item.dataset.id);
-    if (r) openClassModal(cls, r.date, r.period, r.id);
-  });
+  const after = (j, msg) => {
+    state.data.records = j.records;
+    renderAll();
+    toast(msg);
+  };
 
-  if (existing && !readOnly) {
-    $('#rDel').onclick = () => {
-      const box = $('#rActions');
-      box.innerHTML = '<span class="card-sub" style="margin-right:auto">' +
-        shortDate(existing.date) + ' ' + esc(existing.period) + '교시 기록을 지울까요?</span>' +
-        '<button class="btn" id="rDelNo" type="button">취소</button>' +
-        '<button class="btn btn-danger confirm" id="rDelYes" type="button">삭제</button>';
+  // 지우기 버튼 : 한 번 누르면 '정말 지우기'로 바뀌고 한 번 더 눌러야 지운다
+  const twoStepDelete = (btn, id, done) => {
+    btn.onclick = async () => {
+      if (!btn.classList.contains('confirm')) {
+        btn.classList.add('confirm');
+        btn.textContent = '정말 지우기';
+        return;
+      }
+      btn.disabled = true;
+      try {
+        const j = await api('deleteRecord', { key: state.key, id: id });
+        after(j, '지웠습니다.');
+        done();
+      } catch (e) {
+        handleActionError(e);
+        btn.disabled = false;
+      }
+    };
+  };
 
-      $('#rDelNo').onclick = () => openClassModal(cls, base.date, base.period, existing.id);
-      $('#rDelYes').onclick = async () => {
-        $('#rDelYes').disabled = true;
-        try {
-          const j = await api('deleteRecord', { key: state.key, id: existing.id });
-          state.data.records = j.records;
-          closeModal();
-          renderAll();
-          toast('기록을 지웠습니다.');
-        } catch (e) {
-          handleActionError(e);
-          openClassModal(cls, base.date, base.period, existing.id);
-        }
+  // ── 내 메모 저장·지우기
+  if ($('#mForm')) {
+    if (mine) twoStepDelete($('#mDel'), mine.id, () => openClassModal(cls, date, period));
+
+    $('#mForm').onsubmit = async (ev) => {
+      ev.preventDefault();
+      const rec = {
+        id: mine ? mine.id : '',
+        cls: cls,
+        date: $('#rDate').value,
+        period: $('#rPeriod').value,
+        progress: $('#mProg') ? $('#mProg').value.trim() : (mine ? mine.progress : ''),
+        memo: $('#mMemo').value.trim(),
+        share: false
       };
+      const err = $('#mErr');
+      if (!rec.date) { err.textContent = '날짜를 입력해 주세요.'; return; }
+      if (!rec.progress && !rec.memo && !mine) { err.textContent = free ? '메모를 입력해 주세요.' : '진도나 메모를 입력해 주세요.'; return; }
+      err.textContent = '';
+      const btn = $('#mSave');
+      btn.disabled = true;
+      btn.textContent = '저장 중…';
+      try {
+        const j = await api('saveRecord', { key: state.key, record: rec });
+        after(j, j.message || '내 메모를 저장했습니다.');
+        openClassModal(cls, rec.date, rec.period);
+      } catch (e) {
+        if (AUTH_ERRORS.indexOf(e.code) >= 0) { handleActionError(e); return; }
+        err.textContent = e.message;
+        btn.disabled = false;
+        btn.textContent = mine ? '내 메모 저장' : '내 메모 기록';
+      }
     };
   }
 
-  $('#rForm').onsubmit = async (ev) => {
-    ev.preventDefault();
-    if (readOnly) return;
-    const rec = {
-      id: existing ? existing.id : '',
-      cls: cls,
-      date: $('#rDate').value,
-      period: $('#rPeriod').value,
-      progress: $('#rProg').value.trim(),
-      memo: $('#rMemo').value.trim(),
-      share: !!($('#rShare') && $('#rShare').checked)
-    };
-    const err = $('#rErr');
-    if (!rec.date) { err.textContent = '날짜를 입력해 주세요.'; return; }
-    if (!rec.progress && !rec.memo) { err.textContent = free ? '메모를 입력해 주세요.' : '진도나 메모를 입력해 주세요.'; return; }
-    err.textContent = '';
+  // ── 전체 안내 고르기·저장·지우기
+  $('#modal').querySelectorAll('.share-edit').forEach(a => {
+    a.onclick = (ev) => { ev.preventDefault(); openClassModal(cls || '전체', date, period, a.dataset.id); };
+  });
+  if ($('#sNew')) $('#sNew').onclick = () => openClassModal(cls || '전체', date, period, 'new');
 
-    const btn = $('#rSave');
-    btn.disabled = true;
-    btn.textContent = '저장 중…';
-    try {
-      const j = await api('saveRecord', { key: state.key, record: rec });
-      state.data.records = j.records;
-      closeModal();
-      renderAll();
-      toast(j.message || '기록을 저장했습니다.');
-    } catch (e) {
-      if (AUTH_ERRORS.indexOf(e.code) >= 0) { handleActionError(e); return; }
-      err.textContent = e.message;
-      btn.disabled = false;
-      btn.textContent = existing ? '저장' : '기록';
-    }
-  };
+  if ($('#sForm')) {
+    if (editing) twoStepDelete($('#sDel'), editing.id, () => openClassModal(cls || '전체', date, period));
+
+    $('#sForm').onsubmit = async (ev) => {
+      ev.preventDefault();
+      const rec = {
+        id: editing ? editing.id : '',
+        cls: SHARED_CLS_NAME,
+        date: $('#rDate').value,
+        period: $('#rPeriod').value,
+        progress: '',
+        memo: $('#sMemo').value.trim(),
+        share: true
+      };
+      const err = $('#sErr');
+      if (!rec.date) { err.textContent = '날짜를 입력해 주세요.'; return; }
+      if (!rec.memo) { err.textContent = editing ? '지우려면 지우기 버튼을 눌러 주세요.' : '안내 내용을 입력해 주세요.'; return; }
+      err.textContent = '';
+      const btn = $('#sSave');
+      btn.disabled = true;
+      btn.textContent = '저장 중…';
+      try {
+        const j = await api('saveRecord', { key: state.key, record: rec });
+        after(j, '전체 안내를 저장했습니다.');
+        openClassModal(cls || '전체', rec.date, rec.period);
+      } catch (e) {
+        if (AUTH_ERRORS.indexOf(e.code) >= 0) { handleActionError(e); return; }
+        err.textContent = e.message;
+        btn.disabled = false;
+        btn.textContent = editing ? '전체 안내 저장' : '전체 안내 올리기';
+      }
+    };
+  }
 }
+const SHARED_CLS_NAME = '전체';
 
 function notices() { return state.data.notices || []; }
 
@@ -2269,7 +2343,8 @@ $('#weekTable').addEventListener('click', (ev) => {
   const chip = ev.target.closest('.share-chip');
   if (chip) {
     ev.stopPropagation();
-    openClassModal('전체', chip.dataset.date, chip.dataset.period, chip.dataset.rid);
+    const cell = chip.closest('td.clickable');
+    openClassModal(cell ? cell.dataset.cls : '전체', chip.dataset.date, chip.dataset.period, chip.dataset.rid);
     return;
   }
   const td = ev.target.closest('td.clickable');
