@@ -325,7 +325,7 @@
   }
   .mini-bar .brand-mark { width: 26px; height: 26px; font-size: 13px; border-radius: 7px; }
   .mini-bar .when { flex: 1; min-width: 0; line-height: 1.2; }
-  .mini-bar .when b { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .mini-bar .when b { font-size: 14px; font-weight: 700; white-space: nowrap; }
   .mini-bar .when span { display: block; font-size: 12px; color: var(--head-sub); white-space: nowrap; }
   .mini-bar .icon-btn { height: 30px; padding: 0 9px; font-size: 12px; }
   .mini-body { padding: 10px 12px 16px; display: flex; flex-direction: column; gap: 10px; }
@@ -336,6 +336,25 @@
   .mini-card h4 { margin: 0 0 6px; font-size: 13px; color: var(--sub); font-weight: 700; display: flex; gap: 6px; align-items: baseline; }
   .mini-card h4 .cnt { font-weight: 400; color: var(--faint); font-size: 12px; }
   .mini-card .now-box { margin-bottom: 0; padding: 10px 12px; }
+  .mini-clock-row { display: flex; align-items: center; gap: 12px; }
+  .mini-clock { flex-shrink: 0; width: 92px; display: flex; flex-direction: column; align-items: center; }
+  .mini-clock svg { width: 88px; height: 88px; display: block; }
+  .mini-digital { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .5px; margin-top: 2px; }
+  .mini-now { flex: 1; min-width: 0; }
+  .mini-now .now-box { height: 100%; }
+  .ana-face { fill: var(--bg); stroke: var(--line); stroke-width: 2; }
+  .ana-tick { stroke: var(--faint); stroke-width: 1; }
+  .ana-tick.big { stroke: var(--text); stroke-width: 2.4; }
+  .ana-h, .ana-m { stroke: var(--text); stroke-linecap: round; }
+  .ana-h { stroke-width: 4.5; }
+  .ana-m { stroke-width: 3; }
+  .ana-s { stroke: var(--red); stroke-width: 1.2; stroke-linecap: round; }
+  .ana-dot { fill: var(--red); }
+  @media (max-width: 340px) {
+    .mini-clock { width: 74px; }
+    .mini-clock svg { width: 70px; height: 70px; }
+    .mini-digital { font-size: 15px; }
+  }
   .mini-card .now-main { font-size: 17px; }
   .mini-card .share-box { margin: 8px 0 0; padding: 7px 10px; font-size: 12px; }
   .mini-card .today-list li { grid-template-columns: 38px 76px 1fr; padding: 6px 2px; font-size: 13px; }
@@ -820,12 +839,21 @@
   <div id="miniView">
     <div class="mini-bar">
       <div class="brand-mark">숭</div>
-      <div class="when"><b id="miniClock"></b><span id="miniDate"></span></div>
+      <div class="when"><b id="miniDate"></b><span id="miniName"></span></div>
       <button class="icon-btn" id="miniRefresh" type="button" title="새로고침">↻</button>
       <button class="icon-btn" id="miniOffBtn" type="button" title="원래 화면으로">크게</button>
     </div>
     <div class="mini-body">
-      <div class="mini-card" id="miniNow"></div>
+      <div class="mini-card">
+        <div class="mini-clock-row">
+          <div class="mini-clock">
+            <svg id="miniAna" viewBox="0 0 100 100" aria-hidden="true"></svg>
+            <div class="mini-digital" id="miniDigital"></div>
+          </div>
+          <div class="mini-now" id="miniNow"></div>
+        </div>
+        <div id="miniShare"></div>
+      </div>
       <div class="mini-card"><h4>오늘 근무 <span class="cnt" id="miniDutyCnt"></span></h4><div id="miniDuty"></div></div>
       <div class="mini-card"><h4>오늘 수업 <span class="cnt" id="miniClassCnt"></span></h4><ul class="today-list" id="miniClasses"></ul></div>
       <div class="mini-card"><h4>오늘 일정</h4><div id="miniNotices"></div></div>
@@ -1271,6 +1299,39 @@ function setMini(on) {
   renderMini();
 }
 
+// 아날로그 시계 : 눈금은 한 번만 그리고, 바늘은 1초마다 돌린다
+let miniClockBuilt = false;
+function drawMiniClock() {
+  const svg = $('#miniAna');
+  if (!svg) return;
+  const NS = 'http://www.w3.org/2000/svg';
+  if (!miniClockBuilt) {
+    const mk = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+    svg.appendChild(mk('circle', { cx: 50, cy: 50, r: 46, class: 'ana-face' }));
+    for (let i = 0; i < 60; i++) {
+      const big = i % 5 === 0;
+      const a = (i * 6 - 90) * Math.PI / 180;
+      const r1 = 43, r2 = big ? 37 : 40.5;
+      svg.appendChild(mk('line', {
+        x1: 50 + r1 * Math.cos(a), y1: 50 + r1 * Math.sin(a),
+        x2: 50 + r2 * Math.cos(a), y2: 50 + r2 * Math.sin(a),
+        class: 'ana-tick' + (big ? ' big' : '')
+      }));
+    }
+    svg.appendChild(mk('line', { x1: 50, y1: 56, x2: 50, y2: 28, class: 'ana-h', id: 'anaH' }));
+    svg.appendChild(mk('line', { x1: 50, y1: 56, x2: 50, y2: 17, class: 'ana-m', id: 'anaM' }));
+    svg.appendChild(mk('line', { x1: 50, y1: 57, x2: 50, y2: 13, class: 'ana-s', id: 'anaS' }));
+    svg.appendChild(mk('circle', { cx: 50, cy: 50, r: 3, class: 'ana-dot' }));
+    miniClockBuilt = true;
+  }
+  const d = new Date();
+  const h = d.getHours() % 12, m = d.getMinutes(), sec = d.getSeconds();
+  $('#anaH').setAttribute('transform', 'rotate(' + ((h + m / 60) * 30) + ' 50 50)');
+  $('#anaM').setAttribute('transform', 'rotate(' + ((m + sec / 60) * 6) + ' 50 50)');
+  $('#anaS').setAttribute('transform', 'rotate(' + (sec * 6) + ' 50 50)');
+  $('#miniDigital').textContent = hm(d);
+}
+
 function dutyTimeText(d) {
   if (d.start && d.end) return d.start + '~' + d.end;
   if (d.slot === '교시' && d.period) {
@@ -1285,12 +1346,17 @@ function renderMini() {
   const d = new Date();
   const today = todayStr();
   const nowMin = toMin(hm(d));
-  $('#miniClock').textContent = hm(d);
-  $('#miniDate').textContent = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + DOW[d.getDay()] + ') · ' +
-    (state.data.me ? state.data.me.name + ' 선생님' : '');
+  $('#miniDate').textContent = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + DOW[d.getDay()] + ')';
+  $('#miniName').textContent = state.data.me ? state.data.me.name + ' 선생님' : '';
+  drawMiniClock();
 
-  // 지금 상태 : 큰 화면의 상자를 그대로 가져온다
-  $('#miniNow').innerHTML = $('#nowBox').innerHTML;
+  // 지금 상태 : 큰 화면의 상자를 가져와 첫 상자는 시계 옆에, 전체 안내는 그 아래에 둔다
+  const tmp = document.createElement('div');
+  tmp.innerHTML = $('#nowBox').innerHTML;
+  const first = tmp.querySelector('.now-box');
+  $('#miniNow').innerHTML = first ? first.outerHTML : '';
+  if (first) first.remove();
+  $('#miniShare').innerHTML = tmp.innerHTML;
 
   // 오늘 근무
   const duties = (state.data.duties || []).filter(x => x.date === today);
@@ -2566,6 +2632,11 @@ setInterval(() => {
   const t = todayStr();
   if (t !== lastDay) { lastDay = t; state.selDate = t; renderAll(); refresh(true); }
 }, 30 * 1000);
+
+// 작은 화면의 아날로그 시계 : 1초마다
+setInterval(() => {
+  if (state.view === 'app' && isMini() && document.visibilityState === 'visible') drawMiniClock();
+}, 1000);
 
 // 자동 새로고침: 5분마다 (입력 창이 열려 있을 때는 건너뜀)
 setInterval(() => {
