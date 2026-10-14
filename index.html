@@ -335,6 +335,18 @@
   }
   .mini-card h4 { margin: 0 0 6px; font-size: 13px; color: var(--sub); font-weight: 700; display: flex; gap: 6px; align-items: baseline; }
   .mini-card h4 .cnt { font-weight: 400; color: var(--faint); font-size: 12px; }
+  .mini-card h4 { align-items: center; }
+  .mini-card h4 .grow { flex: 1; }
+  .mini-card h4 .sw-lbl { font-size: 12px; font-weight: 400; color: var(--sub); }
+  .mini-sw { position: relative; width: 30px; height: 17px; border-radius: 9px; border: none; padding: 0; flex-shrink: 0;
+    background: var(--line); cursor: pointer; transition: background .15s; }
+  .mini-sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.15); transition: left .15s; }
+  .mini-sw.on { background: var(--accent); }
+  .mini-sw.on::after { left: 15px; }
+  .mini-card .today-list .mmemo { display: block; font-size: 11px; font-weight: 400; color: var(--sub);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+  .mini-card .today-list .mmemo::before { content: "✎ "; color: var(--faint); }
   .mini-card .now-box { margin-bottom: 0; padding: 10px 12px; }
   .mini-clock-row { display: flex; align-items: center; gap: 12px; }
   .mini-clock { flex-shrink: 0; width: 92px; display: flex; flex-direction: column; align-items: center; }
@@ -855,7 +867,7 @@
         <div id="miniShare"></div>
       </div>
       <div class="mini-card"><h4>오늘 근무 <span class="cnt" id="miniDutyCnt"></span></h4><div id="miniDuty"></div></div>
-      <div class="mini-card"><h4>오늘 수업 <span class="cnt" id="miniClassCnt"></span></h4><ul class="today-list" id="miniClasses"></ul></div>
+      <div class="mini-card"><h4>오늘 수업 <span class="cnt" id="miniClassCnt"></span><span class="grow"></span><span class="sw-lbl">내 메모</span><button class="mini-sw" id="miniMemoSw" type="button" role="switch" aria-checked="false" title="이 기기에서 내 메모 보기"></button></h4><ul class="today-list" id="miniClasses"></ul></div>
       <div class="mini-card"><h4>오늘 일정</h4><div id="miniNotices"></div></div>
       <div class="mini-card"><h4>점심</h4><div class="mini-meal" id="miniMeal"></div></div>
     </div>
@@ -1286,7 +1298,7 @@ function renderAll() {
 }
 
 /* ───────────── 작은 화면 모드 ───────────── */
-// 교실 PC 화면에 띄울 수 있으므로 개인 메모는 넣지 않는다
+// 교실 PC 화면에 띄울 수 있으므로 개인 메모는 '내 메모' 스위치를 켠 기기에서만 보인다
 
 const MINI_KEY = 'ssgh_mini';
 function isMini() { return document.documentElement.classList.contains('mini'); }
@@ -1332,6 +1344,16 @@ function drawMiniClock() {
   $('#miniDigital').textContent = hm(d);
 }
 
+// 작은 화면에서 내 메모 보기 : 기기마다 따로 기억, 처음에는 꺼짐 (교실 화면 대비)
+const MINI_MEMO_KEY = 'ssgh_mini_memo';
+function miniMemoOn() {
+  try { return localStorage.getItem(MINI_MEMO_KEY) === '1'; } catch (e) { return false; }
+}
+function setMiniMemo(on) {
+  try { localStorage.setItem(MINI_MEMO_KEY, on ? '1' : '0'); } catch (e) { }
+  renderMini();
+}
+
 function dutyTimeText(d) {
   if (d.start && d.end) return d.start + '~' + d.end;
   if (d.slot === '교시' && d.period) {
@@ -1370,6 +1392,9 @@ function renderMini() {
     : '<div class="mini-empty">오늘 근무가 없습니다.</div>';
 
   // 오늘 수업
+  const sw = $('#miniMemoSw');
+  sw.classList.toggle('on', miniMemoOn());
+  sw.setAttribute('aria-checked', String(miniMemoOn()));
   const dow = d.getDay();
   if (dow < 1 || dow > 5) {
     $('#miniClassCnt').textContent = '';
@@ -1384,12 +1409,18 @@ function renderMini() {
       const done = nowMin >= toMin(p.end);
       const now = nowMin >= toMin(p.start) && nowMin < toMin(p.end);
       const changed = !!changeAt(today, p.period);
+      let memo = '';
+      if (miniMemoOn()) {
+        const rec = findRecord(cls || freeSlotKey(day, p.period), today, p.period);
+        if (rec) memo = (rec.progress || (rec.memo || '').split('\n')[0] || '').trim();
+      }
       return '<li class="' + (now ? 'now' : done ? 'done' : '') + '">' +
         '<span class="p">' + p.period + '교시</span>' +
         '<span class="t">' + p.start + '~' + p.end + '</span>' +
         '<span class="c' + (cls ? '' : ' empty') + '">' + (cls ? esc(cls) : '—') +
           (changed ? ' <span class="chg" style="font-size:10px;color:var(--chg-text);background:var(--chg-bg);border-radius:4px;padding:0 3px">변경</span>' : '') +
-          (pd ? '<span class="duty">' + esc(pd) + '</span>' : '') + '</span></li>';
+          (pd ? '<span class="duty">' + esc(pd) + '</span>' : '') +
+          (memo ? '<span class="mmemo">' + esc(memo) + '</span>' : '') + '</span></li>';
     }).join('');
     $('#miniClassCnt').textContent = cnt + '시간';
     $('#miniClasses').innerHTML = rows || '<li class="mini-empty" style="display:block">교시 시각이 설정되지 않았습니다.</li>';
@@ -2519,6 +2550,7 @@ $('#refreshBtn').onclick = () => refresh(false);
 $('#miniRefresh').onclick = () => refresh(false);
 $('#miniOnBtn').onclick = () => setMini(true);
 $('#miniOffBtn').onclick = () => setMini(false);
+$('#miniMemoSw').onclick = () => setMiniMemo(!miniMemoOn());
 $('#installBtn').onclick = async () => {
   if (!installEvent) return;
   installEvent.prompt();
