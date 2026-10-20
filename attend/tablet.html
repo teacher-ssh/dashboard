@@ -28,8 +28,6 @@
   #qr { width: 62vmin; height: 62vmin; display: flex; align-items: center; justify-content: center; }
   #qr img, #qr canvas { width: 100% !important; height: 100% !important; image-rendering: pixelated; }
   .qrbox.stale #qr { filter: blur(6px); opacity: .35; }
-  #bar { width: 100%; height: 1.2vmin; background: #e6ebf0; border-radius: 99px; overflow: hidden; }
-  #bar i { display: block; height: 100%; width: 100%; background: #1f9d6b; transition: width 1s linear; }
   .scan { color: #33414f; font-size: 3.2vmin; font-weight: 700; }
   #overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
     text-align: center; color: #b42318; font-size: 3.6vmin; font-weight: 800; padding: 4vmin; }
@@ -68,7 +66,6 @@
   <main>
     <section class="qrbox stale" id="qrbox">
       <div id="qr"></div>
-      <div id="bar"><i id="barFill"></i></div>
       <div class="scan">휴대폰 카메라로 찍어 출석하세요 · 학교 와이파이 필수</div>
       <div id="overlay">연결 확인 중…</div>
     </section>
@@ -160,23 +157,12 @@ async function refreshQr() {
     document.getElementById('qrbox').classList.remove('stale');
     setStatus('정상 작동 중 · ' + (res.ip || ''), true);
     document.getElementById('updated').textContent = '마지막 갱신 ' + hms(new Date());
-    startBar();
     timer = setTimeout(refreshQr, refreshSec * 1000);
   } catch (e) {
     stale('인터넷 연결이 끊겼습니다\n자동으로 다시 연결합니다');
     setStatus('연결 끊김 — 5초 후 재시도', false);
     timer = setTimeout(refreshQr, 5000);
   }
-}
-
-function startBar() {
-  const fill = document.getElementById('barFill');
-  fill.style.transition = 'none';
-  fill.style.width = '100%';
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    fill.style.transition = 'width ' + refreshSec + 's linear';
-    fill.style.width = '0%';
-  }));
 }
 
 async function refreshDevice() {
