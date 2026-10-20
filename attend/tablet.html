@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>출석 QR — 숭신고</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1720; --panel: #17212c; --line: #263342; --text: #eef3f8; --sub: #93a4b6;
+    --accent: #3ddc97; --warn: #ffb347; --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif; }
+  body { display: flex; flex-direction: column; padding: 3vmin; gap: 2.5vmin; user-select: none; }
+
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 2vmin; }
+  #room { font-size: 6.5vmin; font-weight: 800; letter-spacing: -0.02em; }
+  #clock { font-size: 6vmin; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--sub); }
+
+  main { flex: 1; display: grid; grid-template-columns: auto 1fr; gap: 3vmin; min-height: 0; }
+  @media (orientation: portrait) { main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } }
+
+  .qrbox { background: #fff; border-radius: 3vmin; padding: 3vmin; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 2vmin; position: relative; }
+  #qr { width: 62vmin; height: 62vmin; display: flex; align-items: center; justify-content: center; }
+  #qr img, #qr canvas { width: 100% !important; height: 100% !important; image-rendering: pixelated; }
+  .qrbox.stale #qr { filter: blur(6px); opacity: .35; }
+  #bar { width: 100%; height: 1.2vmin; background: #e6ebf0; border-radius: 99px; overflow: hidden; }
+  #bar i { display: block; height: 100%; width: 100%; background: #1f9d6b; transition: width 1s linear; }
+  .scan { color: #33414f; font-size: 3.2vmin; font-weight: 700; }
+  #overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    text-align: center; color: #b42318; font-size: 3.6vmin; font-weight: 800; padding: 4vmin; }
+  .qrbox.stale #overlay { display: flex; }
+
+  .side { display: flex; flex-direction: column; gap: 2.5vmin; min-height: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 2.5vmin; padding: 3vmin; }
+  .label { color: var(--sub); font-size: 2.4vmin; font-weight: 600; margin-bottom: 1vmin; }
+  #now { font-size: 5vmin; font-weight: 800; line-height: 1.25; }
+  #now.idle { color: var(--sub); font-size: 4vmin; }
+  #nowSub { color: var(--accent); font-size: 2.8vmin; margin-top: 1vmin; font-weight: 600; }
+  #list { list-style: none; display: flex; flex-direction: column; gap: 1.2vmin; overflow: auto; }
+  #list li { display: flex; justify-content: space-between; font-size: 3vmin; padding: 1vmin 0;
+    border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  #list li.on { color: var(--accent); font-weight: 800; }
+  #list li.past { color: #5d6d7e; }
+  .list-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  footer { display: flex; justify-content: space-between; color: var(--sub); font-size: 2.1vmin; }
+  #status.bad { color: var(--bad); font-weight: 700; }
+  #status.ok::before { content: "●"; color: var(--accent); margin-right: .8vmin; }
+
+  #setup { display: none; position: fixed; inset: 0; background: var(--bg); padding: 6vmin;
+    flex-direction: column; gap: 3vmin; justify-content: center; font-size: 3.4vmin; line-height: 1.6; }
+  #setup.show { display: flex; }
+  #setup h1 { font-size: 5vmin; }
+  #setup code { background: var(--panel); padding: .4vmin 1.2vmin; border-radius: 1vmin; }
+</style>
+</head>
+<body>
+  <header>
+    <div id="room">출석 기기 준비 중…</div>
+    <div id="clock">--:--</div>
+  </header>
+
+  <main>
+    <section class="qrbox stale" id="qrbox">
+      <div id="qr"></div>
+      <div id="bar"><i id="barFill"></i></div>
+      <div class="scan">휴대폰 카메라로 찍어 출석하세요 · 학교 와이파이 필수</div>
+      <div id="overlay">연결 확인 중…</div>
+    </section>
+
+    <section class="side">
+      <div class="card">
+        <div class="label">지금 진행 중</div>
+        <div id="now" class="idle">—</div>
+        <div id="nowSub"></div>
+      </div>
+      <div class="card list-card">
+        <div class="label">오늘 이 장소 시간표</div>
+        <ul id="list"></ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span id="status">시작 중</span>
+    <span id="updated"></span>
+  </footer>
+
+  <div id="setup">
+    <h1>출석 기기 설정이 필요합니다</h1>
+    <p>출석부 시트의 <code>장소</code> 탭에 있는 <b>태블릿주소</b>를 이 태블릿에서 열어 주세요.</p>
+    <p>한 번 열면 이 태블릿에 저장되어, 다음부터는 이 페이지만 열어도 작동합니다.</p>
+  </div>
+
+<script>
+/* ── 설정: Cloudflare Worker 주소 ── */
+const WORKER_URL = 'https://ssh-attend.teacher-dff.workers.dev';
+
+const STUDENT_URL = new URL('index.html', location.href).href;
+const LS_KEY = 'ssh_attend_device';
+let device = null, qr = null, refreshSec = 20, lastOk = 0, timer = null, tick = null;
+
+function loadDevice() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('room') && p.get('v') && p.get('key')) {
+    const d = { room: p.get('room'), v: p.get('v'), key: p.get('key') };
+    try { localStorage.setItem(LS_KEY, JSON.stringify(d)); } catch (e) {}
+    history.replaceState(null, '', location.pathname);   // 주소창에서 기기키 숨기기
+    return d;
+  }
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) { return null; }
+}
+
+function qs(d) {
+  return 'room=' + encodeURIComponent(d.room) + '&v=' + encodeURIComponent(d.v) + '&key=' + encodeURIComponent(d.key);
+}
+
+async function call(path) {
+  const r = await fetch(WORKER_URL + path, { cache: 'no-store' });
+  return r.json();
+}
+
+function setStatus(text, ok) {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = ok ? 'ok' : 'bad';
+}
+
+function stale(msg) {
+  document.getElementById('qrbox').classList.add('stale');
+  document.getElementById('overlay').textContent = msg;
+}
+
+async function refreshQr() {
+  clearTimeout(timer);
+  try {
+    const res = await call('/qr?' + qs(device));
+    if (!res.ok) {
+      stale(res.msg || 'QR을 받지 못했습니다');
+      setStatus(res.msg || '오류', false);
+      timer = setTimeout(refreshQr, 10000);
+      return;
+    }
+    refreshSec = res.refresh || 20;
+    const text = STUDENT_URL + '?t=' + res.token;
+    if (!qr) {
+      qr = new QRCode(document.getElementById('qr'), {
+        text, width: 512, height: 512, correctLevel: QRCode.CorrectLevel.M,
+      });
+    } else {
+      qr.clear();
+      qr.makeCode(text);
+    }
+    lastOk = Date.now();
+    document.getElementById('qrbox').classList.remove('stale');
+    setStatus('정상 작동 중 · ' + (res.ip || ''), true);
+    document.getElementById('updated').textContent = '마지막 갱신 ' + hms(new Date());
+    startBar();
+    timer = setTimeout(refreshQr, refreshSec * 1000);
+  } catch (e) {
+    stale('인터넷 연결이 끊겼습니다\n자동으로 다시 연결합니다');
+    setStatus('연결 끊김 — 5초 후 재시도', false);
+    timer = setTimeout(refreshQr, 5000);
+  }
+}
+
+function startBar() {
+  const fill = document.getElementById('barFill');
+  fill.style.transition = 'none';
+  fill.style.width = '100%';
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    fill.style.transition = 'width ' + refreshSec + 's linear';
+    fill.style.width = '0%';
+  }));
+}
+
+async function refreshDevice() {
+  try {
+    const res = await call('/device?' + qs(device));
+    if (!res.ok) { document.getElementById('room').textContent = res.msg || '기기 오류'; return; }
+    document.getElementById('room').textContent = res.room;
+    document.title = res.room + ' 출석';
+
+    const nowEl = document.getElementById('now'), sub = document.getElementById('nowSub');
+    if (res.current && res.current.length) {
+      nowEl.textContent = res.current.join(' · ');
+      nowEl.className = '';
+      const cur = res.sessions.find(s => s.name === res.current[0]);
+      sub.textContent = cur ? cur.start + ' ~ ' + cur.end : '';
+    } else {
+      nowEl.textContent = '지금은 출석 시간이 아닙니다';
+      nowEl.className = 'idle';
+      sub.textContent = '';
+    }
+
+    const m = toMin(res.now);
+    document.getElementById('list').innerHTML = (res.sessions || []).map(s => {
+      const on = res.current && res.current.includes(s.name);
+      const past = toMin(s.end) < m;
+      return '<li class="' + (on ? 'on' : past ? 'past' : '') + '"><span>' + esc(s.name) +
+             '</span><span>' + s.start + ' ~ ' + s.end + '</span></li>';
+    }).join('') || '<li><span>오늘 등록된 시간이 없습니다</span></li>';
+  } catch (e) { /* 다음 주기에 재시도 */ }
+}
+
+function toMin(hm) { const m = String(hm || '').match(/(\d+):(\d+)/); return m ? +m[1] * 60 + +m[2] : 0; }
+function hms(d) { return d.toLocaleTimeString('ko-KR', { hour12: false }); }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function clock() {
+  const d = new Date();
+  document.getElementById('clock').textContent =
+    d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  // QR이 너무 오래 갱신되지 않으면 흐리게 처리
+  if (lastOk && Date.now() - lastOk > (refreshSec + 15) * 1000) stale('QR 갱신이 멈췄습니다\n재연결 중…');
+}
+
+/* 화면 꺼짐 방지 */
+let wakeLock = null;
+async function keepAwake() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { keepAwake(); refreshQr(); refreshDevice(); }
+});
+/* 화면을 한 번 누르면 전체화면 */
+document.addEventListener('click', () => {
+  if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+  keepAwake();
+});
+
+device = loadDevice();
+if (!device) {
+  document.getElementById('setup').classList.add('show');
+} else {
+  keepAwake();
+  refreshQr();
+  refreshDevice();
+  setInterval(refreshDevice, 60000);
+  tick = setInterval(clock, 1000);
+  clock();
+  // 하루 한 번 새벽에 페이지 새로고침 (메모리 누적 방지)
+  setInterval(() => { if (new Date().getHours() === 4) location.reload(); }, 3600e3);
+}
+</script>
+</body>
+</html>

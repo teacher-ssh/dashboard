@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>자율학습 출석 — 숭신고</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root {
+    --bg: #f4f6f8; --card: #ffffff; --line: #e3e8ee; --text: #17212b; --sub: #66768a;
+    --in: #1f9d6b; --in-soft: #e5f6ee; --out: #2f6fdb; --out-soft: #e7effc;
+    --warn: #b7791f; --warn-soft: #fff4e0; --bad: #c53030; --bad-soft: #fdecec;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); min-height: 100vh;
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    padding: 20px 16px 40px; }
+  .wrap { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  .school { font-size: 14px; color: var(--sub); font-weight: 600; }
+  .time { font-size: 14px; color: var(--sub); font-variant-numeric: tabular-nums; }
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+  .who { font-size: 15px; color: var(--sub); }
+  .who b { color: var(--text); }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
+  .center { text-align: center; }
+  .muted { color: var(--sub); font-size: 15px; line-height: 1.6; }
+
+  .sess-name { font-size: 20px; font-weight: 800; }
+  .sess-time { color: var(--sub); font-size: 14px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .state { display: flex; gap: 8px; margin: 14px 0; flex-wrap: wrap; }
+  .chip { font-size: 13px; font-weight: 700; padding: 6px 10px; border-radius: 99px; background: #eef1f4; color: var(--sub); }
+  .chip.in { background: var(--in-soft); color: var(--in); }
+  .chip.out { background: var(--out-soft); color: var(--out); }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+
+  .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button { font: inherit; border: 0; border-radius: 14px; padding: 18px 0; font-size: 19px; font-weight: 800;
+    cursor: pointer; transition: transform .05s; }
+  button:active { transform: scale(.98); }
+  button:disabled { opacity: .45; cursor: default; }
+  .b-in { background: var(--in-soft); color: var(--in); }
+  .b-out { background: var(--out-soft); color: var(--out); }
+  .b-in.main { background: var(--in); color: #fff; }
+  .b-out.main { background: var(--out); color: #fff; }
+  .b-ghost { background: #eef1f4; color: var(--text); }
+  .b-danger { background: var(--warn); color: #fff; }
+
+  .result { border-radius: 18px; padding: 22px 18px; text-align: center; }
+  .result.ok { background: var(--in-soft); color: var(--in); }
+  .result.warn { background: var(--warn-soft); color: var(--warn); }
+  .result.err { background: var(--bad-soft); color: var(--bad); }
+  .result .big { font-size: 22px; font-weight: 800; line-height: 1.4; }
+  .result .small { font-size: 14px; margin-top: 6px; opacity: .85; line-height: 1.5; }
+
+  .confirm { margin-top: 12px; padding: 14px; border-radius: 14px; background: var(--warn-soft); color: var(--warn);
+    font-weight: 700; font-size: 15px; line-height: 1.5; }
+  .confirm .btns { margin-top: 10px; }
+
+  .spinner { width: 34px; height: 34px; border: 4px solid var(--line); border-top-color: var(--in);
+    border-radius: 50%; animation: spin .8s linear infinite; margin: 8px auto 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #gbtn { display: flex; justify-content: center; margin-top: 14px; min-height: 44px; }
+  .hidden { display: none !important; }
+  .note { font-size: 12px; color: var(--sub); text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="school">숭신고 자율학습 출석</span>
+    <span class="time" id="clock"></span>
+  </div>
+
+  <div id="head" class="hidden">
+    <h1 id="roomName"></h1>
+    <div class="who" id="who"></div>
+  </div>
+
+  <!-- 로그인 -->
+  <div class="card center" id="loginCard">
+    <div class="muted" id="loginMsg">학교 계정(<b>@ssh.hs.kr</b>)으로 로그인하세요.</div>
+    <div id="gbtn"></div>
+  </div>
+
+  <!-- 로딩 -->
+  <div class="card center hidden" id="loading">
+    <div class="spinner"></div>
+    <div class="muted" id="loadingMsg">확인 중…</div>
+  </div>
+
+  <!-- 결과 메시지 -->
+  <div id="result" class="result hidden"></div>
+
+  <!-- 타임 카드들 -->
+  <div id="sessions"></div>
+
+  <div class="note" id="foot">태블릿과 같은 학교 와이파이에 연결되어 있어야 합니다.<br>모바일 데이터는 꺼 주세요.</div>
+</div>
+
+<script>
+/* ── 설정 ── */
+const WORKER_URL = 'https://ssh-attend.teacher-dff.workers.dev';
+const GOOGLE_CLIENT_ID = '226042142319-su9mftc5alsq8kg8euclg6tehp5s5iit.apps.googleusercontent.com';
+const DOMAIN = 'ssh.hs.kr';
+
+const $ = id => document.getElementById(id);
+const token = new URLSearchParams(location.search).get('t');
+let pass = null, state = null, busy = false;
+
+function show(id, on) { $(id).classList.toggle('hidden', !on); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function result(kind, big, small) {
+  const el = $('result');
+  el.className = 'result ' + kind;
+  el.innerHTML = '<div class="big">' + esc(big) + '</div>' + (small ? '<div class="small">' + esc(small) + '</div>' : '');
+  show('result', true);
+}
+
+function loading(on, msg) {
+  show('loading', on);
+  if (msg) $('loadingMsg').textContent = msg;
+}
+
+async function post(path, data) {
+  const r = await fetch(WORKER_URL + path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  });
+  return r.json();
+}
+
+/* ── 카카오톡·네이버 등 앱 안 브라우저에서는 구글 로그인이 막힘 → 외부 브라우저로 ── */
+function inAppBrowser() {
+  const ua = navigator.userAgent;
+  if (/KAKAOTALK/i.test(ua)) {
+    location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+    return true;
+  }
+  if (/NAVER|Instagram|FBAN|FBAV|Line\/|everytimeApp|DaumApps/i.test(ua) || (/Android/.test(ua) && /; wv\)/.test(ua))) {
+    const intent = 'intent://' + location.href.replace(/^https?:\/\//, '') +
+      '#Intent;scheme=https;package=com.android.chrome;end';
+    $('loginMsg').innerHTML = '이 앱 안에서는 구글 로그인이 되지 않습니다.<br><b>휴대폰 기본 카메라</b>로 QR을 다시 찍거나 ' +
+      '<a href="' + intent + '">크롬으로 열기</a>를 눌러 주세요.';
+    return true;
+  }
+  return false;
+}
+
+/* ── 구글 로그인 ── */
+function initGoogle() {
+  if (!window.google || !google.accounts) { setTimeout(initGoogle, 200); return; }
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: onLogin,
+    hd: DOMAIN,
+    auto_select: true,
+    cancel_on_tap_outside: false,
+    use_fedcm_for_prompt: true,
+  });
+  google.accounts.id.renderButton($('gbtn'), {
+    theme: 'filled_blue', size: 'large', shape: 'pill', text: 'signin_with', locale: 'ko', width: 280,
+  });
+  google.accounts.id.prompt();
+}
+
+async function onLogin(resp) {
+  if (busy) return;
+  busy = true;
+  show('loginCard', false);
+  show('result', false);
+  loading(true, '출석 정보를 확인하는 중…');
+  try {
+    const res = await post('/check', { t: token, idToken: resp.credential });
+    loading(false);
+    if (!res.ok) {
+      result('err', res.msg || '확인하지 못했습니다.',
+        res.code === 'domain' ? '오른쪽 위 계정을 학교 계정으로 바꾼 뒤 QR을 다시 찍어 주세요.' : '');
+      if (res.code === 'domain' || res.code === 'login') { show('loginCard', true); google.accounts.id.disableAutoSelect(); }
+      return;
+    }
+    pass = res.pass;
+    state = res;
+    $('roomName').textContent = res.room;
+    $('who').innerHTML = '<b>' + esc(res.studentId) + '</b> ' + esc(res.name || '');
+    show('head', true);
+    render();
+  } catch (e) {
+    loading(false);
+    result('err', '서버에 연결하지 못했습니다.', '학교 와이파이 연결을 확인하고 QR을 다시 찍어 주세요.');
+  } finally {
+    busy = false;
+  }
+}
+
+/* ── 타임 카드 ── */
+function render() {
+  $('sessions').innerHTML = state.sessions.map(s => {
+    const chips = [];
+    if (s.inTime) chips.push('<span class="chip ' + (s.inStatus === '지각' ? 'warn' : 'in') + '">입실 ' + esc(s.inTime) + (s.inStatus && s.inStatus !== '정상' ? ' · ' + esc(s.inStatus) : '') + '</span>');
+    else chips.push('<span class="chip">입실 전</span>');
+    if (s.outTime) chips.push('<span class="chip ' + (s.outStatus === '조퇴' ? 'warn' : 'out') + '">퇴실 ' + esc(s.outTime) + (s.outStatus && s.outStatus !== '정상' ? ' · ' + esc(s.outStatus) : '') + '</span>');
+    if (!s.assigned) chips.push('<span class="chip warn">배정 명단에 없음</span>');
+
+    const done = s.suggest === 'done';
+    const btns = done
+      ? '<div class="muted center">이 시간 출석이 모두 끝났습니다.</div>'
+      : '<div class="btns">' +
+          '<button class="b-in' + (s.suggest === 'in' ? ' main' : '') + '" data-s="' + esc(s.id) + '" data-k="in"' + (s.inTime ? ' disabled' : '') + '>입실</button>' +
+          '<button class="b-out' + (s.suggest === 'out' ? ' main' : '') + '" data-s="' + esc(s.id) + '" data-k="out"' + (!s.inTime ? ' disabled' : '') + '>퇴실</button>' +
+        '</div>';
+
+    return '<div class="card" id="card-' + esc(s.id) + '">' +
+      '<div class="sess-name">' + esc(s.name) + '</div>' +
+      '<div class="sess-time">' + esc(s.start) + ' ~ ' + esc(s.end) + '</div>' +
+      '<div class="state">' + chips.join('') + '</div>' + btns +
+      '<div class="confirm-slot"></div>' +
+    '</div>';
+  }).join('');
+}
+
+$('sessions').addEventListener('click', e => {
+  const b = e.target.closest('button[data-k]');
+  if (b && !b.disabled) submit(b.dataset.s, b.dataset.k, false);
+  const c = e.target.closest('button[data-confirm]');
+  if (c) {
+    if (c.dataset.confirm === 'yes') submit(c.dataset.s, 'out', true);
+    else c.closest('.confirm-slot').innerHTML = '';
+  }
+});
+
+async function submit(sessionId, kind, confirmEarly) {
+  if (busy) return;
+  busy = true;
+  const card = $('card-' + sessionId);
+  card.querySelectorAll('button').forEach(x => x.disabled = true);
+  try {
+    const res = await post('/submit', { pass, sessionId, kind, confirmEarly });
+    const s = state.sessions.find(x => x.id === sessionId);
+
+    if (res.needConfirm) {
+      render();
+      $('card-' + sessionId).querySelector('.confirm-slot').innerHTML =
+        '<div class="confirm">' + esc(res.msg) +
+        '<div class="btns"><button class="b-ghost" data-confirm="no" data-s="' + esc(sessionId) + '">취소</button>' +
+        '<button class="b-danger" data-confirm="yes" data-s="' + esc(sessionId) + '">조퇴로 퇴실</button></div></div>';
+      return;
+    }
+
+    if (!res.ok) {
+      result('err', res.msg || '처리하지 못했습니다.', res.code === 'expired' ? '' : '');
+      render();
+      return;
+    }
+
+    const t = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (kind === 'in' && !res.dup) { s.inTime = t; s.inStatus = res.status; s.suggest = 'out'; }
+    if (kind === 'out' && !res.dup) { s.outTime = t; s.outStatus = res.status; s.suggest = 'done'; }
+    if (res.dup) s.suggest = kind === 'in' ? 'out' : 'done';
+
+    const warn = res.status === '지각' || res.status === '조퇴';
+    result(res.dup ? 'warn' : (warn ? 'warn' : 'ok'), (res.dup ? '' : '✓ ') + res.msg,
+      res.dup ? '' : '이 화면은 닫아도 됩니다.');
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (e) {
+    result('err', '서버에 연결하지 못했습니다.', '와이파이 연결을 확인하고 다시 눌러 주세요.');
+    render();
+  } finally {
+    busy = false;
+  }
+}
+
+/* ── 시작 ── */
+setInterval(() => {
+  $('clock').textContent = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+}, 1000);
+
+if (!token) {
+  show('loginCard', false);
+  result('warn', '자습실 태블릿의 QR 코드를 찍어 주세요.', '이 페이지는 QR 코드로만 출석할 수 있습니다.');
+} else if (!inAppBrowser()) {
+  initGoogle();
+}
+</script>
+</body>
+</html>
