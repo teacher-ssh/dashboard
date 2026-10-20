@@ -770,6 +770,10 @@
   .att-box:hover { background: var(--line-soft); }
   .att-box.live { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
   .att-box.sel { background: var(--accent-soft); }
+  /* 타임명이 같은 카드는 같은 색 */
+  .att-box.grp { background: var(--gt); border-left: 6px solid var(--g); }
+  .att-box.grp:hover { filter: brightness(.97); }
+  .att-box.grp.sel { outline: 3px solid var(--g); outline-offset: 1px; }
   .att-box .ab-name { font-weight: 700; font-size: 15px; }
   .att-box .ab-meta { font-size: 12px; color: var(--sub); margin-top: 2px; font-variant-numeric: tabular-nums; }
   .att-box .ab-num { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; }
@@ -2038,11 +2042,21 @@ function renderAttend() {
   const q = ($('#attSearch').value || '').trim();
   const onlyMiss = $('#attOnlyMiss').checked;
 
+  // 타임명이 같으면 같은 색 [테두리, 바탕]
+  const ATT_COLORS = [['#3f7cc4', '#eaf2fb'], ['#d0812f', '#fcf1e4'], ['#4f9a58', '#eaf5ec'],
+                      ['#9a5bb5', '#f4ecf8'], ['#c2556b', '#fbeaee'], ['#3a9a9a', '#e5f4f4']];
+  const colorOf = {};
+  list.forEach(s => {
+    const k = s.name || s.id;
+    if (!colorOf[k]) colorOf[k] = ATT_COLORS[Object.keys(colorOf).length % ATT_COLORS.length];
+  });
+
   let html = '<div class="att-sum">' + list.map(s => {
     const c = s.counts;
     const miss = c.none + c.absent;
-    return '<button type="button" class="att-box' + (s.live ? ' live' : '') + (s.id === state.attSel ? ' sel' : '') +
-      '" data-sid="' + esc(s.id) + '">' +
+    const col = colorOf[s.name || s.id];
+    return '<button type="button" class="att-box grp' + (s.live ? ' live' : '') + (s.id === state.attSel ? ' sel' : '') +
+      '" style="--g:' + col[0] + ';--gt:' + col[1] + '" data-sid="' + esc(s.id) + '">' +
       '<div class="ab-name">' + esc(s.name) + (s.live ? '<span class="att-live">진행 중</span>' : '') + '</div>' +
       '<div class="ab-meta">' + esc(s.room) + ' · ' + esc(s.start) + '~' + esc(s.end) + '</div>' +
       '<div class="ab-num">' +
