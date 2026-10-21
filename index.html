@@ -761,6 +761,13 @@
 
   /* 학생출결 */
   .att-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .att-range { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+  .att-rangebar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .att-rangebar .grow { flex: 1; }
+  table.atttable tr.pick { cursor: pointer; }
+  table.atttable tr.pick:hover td { background: var(--line-soft); }
+  table.atttable tr.pick.on td { background: var(--accent-soft); font-weight: 700; }
+  .att-detail-title { margin: 16px 0 8px; font-weight: 700; }
   .att-tools .input { max-width: 220px; }
   .att-date { font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px;
     background: var(--card); color: var(--text); font-family: inherit; }
@@ -1050,6 +1057,12 @@
             <input class="input" id="attSearch" type="search" placeholder="학번·이름 찾기" autocomplete="off">
             <input class="att-date" id="attDate" type="date" aria-label="날짜 고르기">
             <label class="check"><input type="checkbox" id="attOnlyMiss"> 미입실·결석만 보기</label>
+            <span class="att-range">
+              <input class="att-date" id="attFrom" type="date" aria-label="조회 시작일">
+              <span class="card-sub">~</span>
+              <input class="att-date" id="attTo" type="date" aria-label="조회 끝날">
+              <button class="btn" id="attRangeBtn" type="button">기간 조회</button>
+            </span>
           </div>
           <div id="attBody"></div>
         </div>
@@ -1307,7 +1320,7 @@ async function refresh(silent) {
     state.data = await api('data', { key: state.key });
     renderAll();
     refreshDutyTab();
-    if (state.tab === 'attend') loadAttend(true);
+    if (state.tab === 'attend') attRefresh(true);
     if (!silent) toast('최신 내용으로 새로고침했습니다.');
   } catch (e) {
     if (AUTH_ERRORS.indexOf(e.code) >= 0) {
@@ -1973,6 +1986,7 @@ function moveAttDay(step) {
 
 // force : 저장해 둔 것을 쓰지 않고 새로 받는다
 async function loadAttend(force) {
+  state.attMode = 'day';
   const date = attDateText();
   $('#attSub').textContent = shortDate(date);
   $('#attDate').value = date;
@@ -1998,11 +2012,158 @@ async function loadAttend(force) {
 // 오늘을 보고 있는 동안 1분마다 다시 받는다
 function scheduleAttend() {
   clearTimeout(attTimer);
-  if (state.tab !== 'attend' || (state.attOffset || 0) !== 0) return;
+  if (state.tab !== 'attend' || state.attMode === 'range' || (state.attOffset || 0) !== 0) return;
   attTimer = setTimeout(() => {
+    if (state.attMode === 'range') return;
     if (state.tab === 'attend' && !document.hidden) loadAttend(true);
     else scheduleAttend();
   }, 60000);
+}
+
+// 지금 보고 있는 방식(하루 / 기간) 그대로 다시 받기
+function attRefresh(force) {
+  if (state.attMode === 'range') loadAttRange(force);
+  else loadAttend(force);
+}
+
+/* ── 기간 조회 : 출석기록만으로 학생별 합계와 날짜별 기록 ── */
+const attRangeCache = {};
+const ATT_RANGE_MAX = 120;
+
+async function loadAttRange(force) {
+  state.attMode = 'range';
+  clearTimeout(attTimer);
+  let from = $('#attFrom').value, to = $('#attTo').value;
+  const today = todayStr();
+  if (!from) from = today.slice(0, 8) + '01';
+  if (!to) to = today;
+  if (to < from) { const t = from; from = to; to = t; }
+  $('#attFrom').value = from;
+  $('#attTo').value = to;
+  const body = $('#attBody');
+  if (diffDays(from, to) > ATT_RANGE_MAX) {
+    body.innerHTML = '<div class="empty-msg">기간은 ' + ATT_RANGE_MAX + '일까지 조회할 수 있습니다.</div>';
+    return;
+  }
+  const k = from + '_' + to;
+  $('#attSub').textContent = shortDate(from) + ' ~ ' + shortDate(to);
+  if (!attRangeCache[k] || force) {
+    body.innerHTML = '<div class="empty-msg">불러오는 중…</div>';
+    try {
+      attRangeCache[k] = await api('attendRange', { key: state.key, from: from, to: to });
+    } catch (e) {
+      body.innerHTML = '<div class="empty-msg">' + esc(e.message || '불러오지 못했습니다.') + '</div>';
+      return;
+    }
+  }
+  if (state.attMode !== 'range') return;
+  state.attRangeKey = k;
+  renderAttRange();
+}
+
+function attRowState(r) {
+  return {
+    state: r.inStatus === '결석' ? 'absent' : (r.inTime ? (r.outTime ? 'out' : 'in') : 'none'),
+    inStatus: r.inStatus, outStatus: r.outStatus
+  };
+}
+
+function attRangeRows() {
+  const data = attRangeCache[state.attRangeKey];
+  if (!data || !data.found) return [];
+  const sess = state.attRangeSess || '';
+  const q = ($('#attSearch').value || '').trim();
+  return (data.rows || []).filter(r => (!sess || r.sname === sess) &&
+    (!q || r.id.indexOf(q) >= 0 || (r.name || '').indexOf(q) >= 0));
+}
+
+function renderAttRange() {
+  const data = attRangeCache[state.attRangeKey];
+  const body = $('#attBody');
+  if (!data) return;
+  if (!data.found) {
+    body.innerHTML = '<div class="empty-msg">출석부 시트를 찾지 못했습니다.</div>';
+    return;
+  }
+
+  const sessNames = (data.rows || []).map(r => r.sname).filter((x, i, a) => x && a.indexOf(x) === i).sort();
+  if (state.attRangeSess && sessNames.indexOf(state.attRangeSess) < 0) state.attRangeSess = '';
+  const rows = attRangeRows();
+  const onlyMiss = $('#attOnlyMiss').checked;
+
+  // 학생별 합계
+  const by = {};
+  rows.forEach(r => {
+    const s = by[r.id] = by[r.id] || { id: r.id, name: '', n: 0, late: 0, early: 0, absent: 0, noOut: 0, rows: [] };
+    if (!s.name && r.name) s.name = r.name;
+    s.rows.push(r);
+    if (r.inTime) s.n++;
+    if (r.inStatus === '지각') s.late++;
+    if (r.outStatus === '조퇴') s.early++;
+    if (r.inStatus === '결석') s.absent++;
+    if (r.outStatus === '퇴실누락') s.noOut++;
+  });
+  let list = Object.keys(by).map(k => by[k]).sort((a, b) => a.id.localeCompare(b.id, 'ko', { numeric: true }));
+  if (onlyMiss) list = list.filter(s => s.absent > 0);
+  if (list.length === 1) state.attRangeSel = list[0].id;
+  const sel = list.find(s => s.id === state.attRangeSel);
+
+  let html = '<div class="att-rangebar"><b>기간 조회</b>' +
+    '<span class="card-sub">' + esc(data.from) + ' ~ ' + esc(data.to) + ' · 기록 ' + rows.length + '건 · 학생 ' + list.length + '명</span>' +
+    '<span class="grow"></span>' +
+    '<select class="att-date" id="attRangeSess"><option value="">모든 타임</option>' +
+    sessNames.map(n => '<option value="' + esc(n) + '"' + (n === state.attRangeSess ? ' selected' : '') + '>' + esc(n) + '</option>').join('') +
+    '</select>' +
+    '<button class="btn" id="attCsv" type="button">CSV 내려받기</button>' +
+    '<button class="btn" id="attBack" type="button">하루 보기로</button></div>';
+
+  html += '<div class="att-wrap" style="max-height:45vh"><table class="atttable"><thead><tr>' +
+    '<th>학번</th><th>이름</th><th>출석</th><th>지각</th><th>조퇴</th><th>결석</th><th>퇴실누락</th></tr></thead><tbody>';
+  if (!list.length) {
+    html += '<tr><td colspan="7" class="empty-msg">' + (onlyMiss ? '결석한 학생이 없습니다.' : '이 기간에 기록이 없습니다.') + '</td></tr>';
+  }
+  list.forEach(s => {
+    const z = (n, cls) => n ? '<span class="' + cls + '">' + n + '</span>' : '<span class="card-sub">0</span>';
+    html += '<tr class="pick' + (sel && sel.id === s.id ? ' on' : '') + '" data-stu="' + esc(s.id) + '">' +
+      '<td class="num">' + esc(s.id) + '</td><td>' + esc(s.name) + '</td>' +
+      '<td class="num">' + s.n + '</td>' +
+      '<td class="num">' + z(s.late, 'att-warn') + '</td>' +
+      '<td class="num">' + z(s.early, 'att-warn') + '</td>' +
+      '<td class="num">' + z(s.absent, 'att-bad') + '</td>' +
+      '<td class="num">' + z(s.noOut, 'att-warn') + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+
+  if (sel) {
+    html += '<div class="att-detail-title">' + esc(sel.id) + ' ' + esc(sel.name) + ' · 날짜별 기록</div>' +
+      '<div class="att-wrap" style="max-height:none"><table class="atttable"><thead><tr>' +
+      '<th>날짜</th><th>타임</th><th>장소</th><th>입실</th><th>퇴실</th><th>상태</th><th>비고</th></tr></thead><tbody>' +
+      sel.rows.map(r => '<tr class="st-' + attRowState(r).state + '">' +
+        '<td class="num">' + esc(shortDate(r.date)) + '</td><td>' + esc(r.sname) + '</td><td>' + esc(r.room) + '</td>' +
+        '<td class="num">' + esc(r.inTime || '-') + '</td><td class="num">' + esc(r.outTime || '-') + '</td>' +
+        '<td>' + attStateTag(attRowState(r)) + '</td><td class="card-sub">' + esc(r.note || '') + '</td></tr>').join('') +
+      '</tbody></table></div>';
+  } else if (list.length) {
+    html += '<div class="tt-note">학생을 누르면 날짜별 기록이 나옵니다.</div>';
+  }
+  html += '<div class="tt-note">출석기록 시트에 남은 기록으로 만듭니다. 결석은 자동 정리가 남긴 기록이라, 오늘 아직 안 온 학생은 하루 보기에서 확인하세요.</div>';
+  body.innerHTML = html;
+}
+
+function downloadAttCsv() {
+  const data = attRangeCache[state.attRangeKey];
+  if (!data) return;
+  const rows = attRangeRows();
+  const cell = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const lines = [['날짜', '타임', '장소', '학번', '이름', '입실', '입실상태', '퇴실', '퇴실상태', '비고'].join(',')]
+    .concat(rows.map(r => [r.date, r.sname, r.room, r.id, r.name, r.inTime, r.inStatus, r.outTime, r.outStatus, r.note].map(cell).join(',')));
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '학생출결_' + data.from + '_' + data.to + (state.attRangeSess ? '_' + state.attRangeSess : '') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
 function attStateTag(st) {
@@ -2018,6 +2179,7 @@ function attStateTag(st) {
 }
 
 function renderAttend() {
+  if (state.attMode === 'range') { renderAttRange(); return; }
   const data = attCache[attDateText()];
   const body = $('#attBody');
   if (!data) return;
@@ -2126,7 +2288,7 @@ function switchTab(name, remember) {
   }
   window.scrollTo({ top: 0 });
   if (name === 'duty' && state.data) renderDutyTable();
-  if (name === 'attend' && state.data) loadAttend();
+  if (name === 'attend' && state.data) attRefresh();
 }
 
 function initTab() {
@@ -2826,7 +2988,11 @@ $('#dutyThis').onclick = () => { state.dutyOffset = 0; renderDutyTable(); };
 $('#attPrev').onclick = () => moveAttDay(-1);
 $('#attNext').onclick = () => moveAttDay(1);
 $('#attToday').onclick = () => { state.attOffset = 0; state.attSel = ''; loadAttend(); };
-$('#attReload').onclick = () => loadAttend(true);
+$('#attReload').onclick = () => attRefresh(true);
+$('#attRangeBtn').onclick = () => { state.attRangeSel = ''; loadAttRange(); };
+$('#attBody').addEventListener('change', (ev) => {
+  if (ev.target.id === 'attRangeSess') { state.attRangeSess = ev.target.value; state.attRangeSel = ''; renderAttRange(); }
+});
 $('#attSearch').addEventListener('input', renderAttend);
 $('#attOnlyMiss').addEventListener('change', renderAttend);
 $('#attDate').addEventListener('change', (ev) => {
@@ -2838,6 +3004,14 @@ $('#attDate').addEventListener('change', (ev) => {
   loadAttend();
 });
 $('#attBody').addEventListener('click', (ev) => {
+  if (ev.target.id === 'attBack') { loadAttend(); return; }
+  if (ev.target.id === 'attCsv') { downloadAttCsv(); return; }
+  const stu = ev.target.closest('tr[data-stu]');
+  if (stu) {
+    state.attRangeSel = state.attRangeSel === stu.dataset.stu ? '' : stu.dataset.stu;
+    renderAttRange();
+    return;
+  }
   const box = ev.target.closest('.att-box');
   if (!box) return;
   state.attSel = box.dataset.sid;
