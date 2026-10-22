@@ -2784,7 +2784,8 @@ function openDetail(id) {
   const n = notices().find(x => x.id === id);
   if (!n) return;
   const me = state.data.me;
-  const mine = me.canPost && n.author === me.name;
+  const canEdit = !!me.canPost;                       // 공지 작성 권한이 있으면 누구 일정이든 수정
+  const mine = canEdit && n.author === me.name;       // 삭제는 작성자만
   const dd = ddayInfo(n);
   const past = n.end < todayStr();
 
@@ -2795,17 +2796,17 @@ function openDetail(id) {
       (n.category ? '<span class="tag">' + esc(n.category) + '</span>' : '') +
     '</div>' +
     '<h2>' + esc(n.title) + '</h2>' +
-    '<div class="meta">' + rangeText(n) + ' · 작성 ' + esc(n.author) + (n.createdAt ? ' · ' + esc(n.createdAt.slice(0, 16)) : '') + '</div>' +
+    '<div class="meta">' + rangeText(n) + ' · 작성 ' + esc(n.author) + (n.createdAt ? ' · ' + esc(n.createdAt.slice(0, 16)) : '') + (n.editedBy ? ' · 수정 ' + esc(n.editedBy) : '') + '</div>' +
     '<div class="content">' + (n.content ? linkify(n.content) : '<span style="color:var(--faint)">내용 없음</span>') + '</div>' +
     '<div class="modal-actions">' +
-      (mine ? '<div class="left"><button class="btn" id="mEdit" type="button">수정</button><button class="btn btn-danger" id="mDel" type="button">삭제</button></div>' : '') +
+      (canEdit ? '<div class="left"><button class="btn" id="mEdit" type="button">수정</button>' + (mine ? '<button class="btn btn-danger" id="mDel" type="button">삭제</button>' : '') + '</div>' : '') +
       '<button class="btn" id="mClose" type="button">닫기</button>' +
     '</div>'
   );
 
   $('#mClose').onclick = closeModal;
+  if (canEdit) $('#mEdit').onclick = () => openForm(n);
   if (mine) {
-    $('#mEdit').onclick = () => openForm(n);
     const del = $('#mDel');
     del.onclick = async () => {
       if (!del.classList.contains('confirm')) {
@@ -2836,7 +2837,7 @@ function openForm(n) {
 
   openModal(
     '<h2>' + (editing ? '공지 수정' : '공지 등록') + '</h2>' +
-    '<div class="meta">등록한 공지는 모든 교직원 화면에 표시됩니다.</div>' +
+    '<div class="meta">' + (editing && n.author && n.author !== state.data.me.name ? esc(n.author) + ' 선생님이 올린 일정입니다. 고친 사람은 기록에 남습니다.' : '등록한 공지는 모든 교직원 화면에 표시됩니다.') + '</div>' +
     '<form id="nForm" autocomplete="off">' +
       '<div class="form-2">' +
         '<div class="form-row"><label for="fStart">시작일</label><input class="input" type="date" id="fStart" value="' + esc(base.start) + '" required></div>' +
