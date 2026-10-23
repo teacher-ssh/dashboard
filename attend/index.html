@@ -38,6 +38,7 @@
   .chip.warn { background: var(--warn-soft); color: var(--warn); }
 
   .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .btns.one { grid-template-columns: 1fr; }
   button { font: inherit; border: 0; border-radius: 14px; padding: 18px 0; font-size: 19px; font-weight: 800;
     cursor: pointer; transition: transform .05s; }
   button:active { transform: scale(.98); }
@@ -206,7 +207,9 @@ function render() {
 
     const done = s.suggest === 'done';
     const btns = done
-      ? '<div class="muted center">이 시간 출석이 모두 끝났습니다.</div>'
+      ? '<div class="muted center">' + (s.inOnly ? '입실이 확인되었습니다. 이 시간은 퇴실하지 않습니다.' : '이 시간 출석이 모두 끝났습니다.') + '</div>'
+      : s.inOnly
+      ? '<div class="btns one"><button class="b-in main" data-s="' + esc(s.id) + '" data-k="in">입실</button></div>'
       : '<div class="btns">' +
           '<button class="b-in' + (s.suggest === 'in' ? ' main' : '') + '" data-s="' + esc(s.id) + '" data-k="in"' + (s.inTime ? ' disabled' : '') + '>입실</button>' +
           '<button class="b-out' + (s.suggest === 'out' ? ' main' : '') + '" data-s="' + esc(s.id) + '" data-k="out"' + (!s.inTime ? ' disabled' : '') + '>퇴실</button>' +
@@ -256,9 +259,9 @@ async function submit(sessionId, kind, confirmEarly) {
     }
 
     const t = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-    if (kind === 'in' && !res.dup) { s.inTime = t; s.inStatus = res.status; s.suggest = 'out'; }
+    if (kind === 'in' && !res.dup) { s.inTime = t; s.inStatus = res.status; s.suggest = s.inOnly ? 'done' : 'out'; }
     if (kind === 'out' && !res.dup) { s.outTime = t; s.outStatus = res.status; s.suggest = 'done'; }
-    if (res.dup) s.suggest = kind === 'in' ? 'out' : 'done';
+    if (res.dup) s.suggest = kind === 'in' && !s.inOnly ? 'out' : 'done';
 
     const warn = res.status === '지각' || res.status === '조퇴';
     result(res.dup ? 'warn' : (warn ? 'warn' : 'ok'), (res.dup ? '' : '✓ ') + res.msg,
