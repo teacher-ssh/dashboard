@@ -787,6 +787,8 @@
   .att-box .ab-num b { font-variant-numeric: tabular-nums; }
   .att-live { display: inline-block; font-size: 11px; font-weight: 700; color: var(--on-accent); background: var(--accent);
     border-radius: 99px; padding: 1px 7px; margin-left: 6px; vertical-align: 2px; }
+  .att-kind { display: inline-block; font-size: 11px; font-weight: 700; color: #fff; background: var(--g, #5f6f86);
+    border-radius: 4px; padding: 1px 6px; margin-right: 6px; vertical-align: 2px; }
   .att-bad { color: var(--red); }
   .att-warn { color: var(--warn-text); }
   .att-wrap { overflow: auto; max-height: calc(100vh - 330px); min-height: 200px; border-top: 1px solid var(--line); }
@@ -1043,7 +1045,7 @@
       <div class="col wide">
         <div class="card">
           <div class="card-head">
-            <h3 class="card-title">학생 자율학습 출결</h3>
+            <h3 class="card-title">학생 자율학습·공강 출결</h3>
             <span class="card-sub" id="attSub"></span>
             <span class="grow"></span>
             <div class="meal-tabs">
@@ -2141,7 +2143,7 @@ function renderAttRange() {
       sel.rows.map(r => '<tr class="st-' + attRowState(r).state + '">' +
         '<td class="num">' + esc(shortDate(r.date)) + '</td><td>' + esc(r.sname) + '</td><td>' + esc(r.room) + '</td>' +
         '<td class="num">' + esc(r.inTime || '-') + '</td><td class="num">' + esc(r.outTime || '-') + '</td>' +
-        '<td>' + attStateTag(attRowState(r)) + '</td><td class="card-sub">' + esc(r.note || '') + '</td></tr>').join('') +
+        '<td>' + attStateTag(attRowState(r), r.kind) + '</td><td class="card-sub">' + esc(r.note || '') + '</td></tr>').join('') +
       '</tbody></table></div>';
   } else if (list.length) {
     html += '<div class="tt-note">학생을 누르면 날짜별 기록이 나옵니다.</div>';
@@ -2155,8 +2157,8 @@ function downloadAttCsv() {
   if (!data) return;
   const rows = attRangeRows();
   const cell = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const lines = [['날짜', '타임', '장소', '학번', '이름', '입실', '입실상태', '퇴실', '퇴실상태', '비고'].join(',')]
-    .concat(rows.map(r => [r.date, r.sname, r.room, r.id, r.name, r.inTime, r.inStatus, r.outTime, r.outStatus, r.note].map(cell).join(',')));
+  const lines = [['날짜', '구분', '타임', '장소', '학번', '이름', '입실', '입실상태', '퇴실', '퇴실상태', '비고'].join(',')]
+    .concat(rows.map(r => [r.date, r.kind === 'slat' ? '공강' : '자율학습', r.sname, r.room, r.id, r.name, r.inTime, r.inStatus, r.outTime, r.outStatus, r.note].map(cell).join(',')));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -2166,11 +2168,11 @@ function downloadAttCsv() {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
-function attStateTag(st) {
+function attStateTag(st, kind) {
   if (st.state === 'none') return '<span class="st-tag none">미입실</span>';
   if (st.state === 'absent') return '<span class="st-tag absent">결석</span>';
   const tags = [];
-  if (st.state === 'in') tags.push('<span class="st-tag in">자습 중</span>');
+  if (st.state === 'in') tags.push('<span class="st-tag in">' + (kind === 'slat' ? '출석' : '자습 중') + '</span>');
   if (st.state === 'out') tags.push('<span class="st-tag out">퇴실</span>');
   if (st.inStatus === '지각') tags.push('<span class="st-tag warn">지각</span>');
   if (st.outStatus === '조퇴') tags.push('<span class="st-tag warn">조퇴</span>');
@@ -2191,7 +2193,7 @@ function renderAttend() {
   }
   const list = data.sessions || [];
   if (!list.length) {
-    body.innerHTML = '<div class="empty-msg">이 날은 자율학습 타임이 없습니다.</div>';
+    body.innerHTML = '<div class="empty-msg">이 날은 자율학습·공강 타임이 없습니다.</div>';
     return;
   }
 
@@ -2207,8 +2209,10 @@ function renderAttend() {
   // 타임명이 같으면 같은 색 [테두리, 바탕]
   const ATT_COLORS = [['#3f7cc4', '#eaf2fb'], ['#d0812f', '#fcf1e4'], ['#4f9a58', '#eaf5ec'],
                       ['#9a5bb5', '#f4ecf8'], ['#c2556b', '#fbeaee'], ['#3a9a9a', '#e5f4f4']];
+  const SLAT_COLOR = ['#5f6f86', '#eef1f6'];   // 공강 카드는 모두 이 색
   const colorOf = {};
   list.forEach(s => {
+    if (s.kind === 'slat') return;
     const k = s.name || s.id;
     if (!colorOf[k]) colorOf[k] = ATT_COLORS[Object.keys(colorOf).length % ATT_COLORS.length];
   });
@@ -2216,10 +2220,12 @@ function renderAttend() {
   let html = '<div class="att-sum">' + list.map(s => {
     const c = s.counts;
     const miss = c.none + c.absent;
-    const col = colorOf[s.name || s.id];
+    const slat = s.kind === 'slat';
+    const col = slat ? SLAT_COLOR : colorOf[s.name || s.id];
     return '<button type="button" class="att-box grp' + (s.live ? ' live' : '') + (s.id === state.attSel ? ' sel' : '') +
       '" style="--g:' + col[0] + ';--gt:' + col[1] + '" data-sid="' + esc(s.id) + '">' +
-      '<div class="ab-name">' + esc(s.name) + (s.live ? '<span class="att-live">진행 중</span>' : '') + '</div>' +
+      '<div class="ab-name">' + (slat ? '<span class="att-kind">공강</span>' : '') + esc(s.name) +
+        (s.live ? '<span class="att-live">진행 중</span>' : '') + '</div>' +
       '<div class="ab-meta">' + esc(s.room) + ' · ' + esc(s.start) + '~' + esc(s.end) + '</div>' +
       '<div class="ab-num">' +
         '<span>배정 <b>' + c.assigned + '</b></span>' +
@@ -2245,11 +2251,13 @@ function renderAttend() {
   rows.sort((a, b) => (rank[a.st.state] - rank[b.st.state]) || (a.st.id < b.st.id ? -1 : 1));
 
   const showSess = !!q;
+  const selS = list.find(s => s.id === state.attSel);
+  const showOut = showSess || !(selS && selS.kind === 'slat');   // 공강은 퇴실이 없음
   html += '<div class="att-wrap"><table class="atttable"><thead><tr>' +
     (showSess ? '<th>타임</th>' : '') +
-    '<th>학번</th><th>이름</th><th>입실</th><th>퇴실</th><th>상태</th><th>비고</th></tr></thead><tbody>';
+    '<th>학번</th><th>이름</th><th>입실</th>' + (showOut ? '<th>퇴실</th>' : '') + '<th>상태</th><th>비고</th></tr></thead><tbody>';
   if (!rows.length) {
-    html += '<tr><td colspan="' + (showSess ? 7 : 6) + '" class="empty-msg">' +
+    html += '<tr><td colspan="' + (5 + (showSess ? 1 : 0) + (showOut ? 1 : 0)) + '" class="empty-msg">' +
       (q ? '찾는 학생이 없습니다.' : onlyMiss ? '미입실·결석 학생이 없습니다.' : '배정되거나 출석한 학생이 없습니다.') + '</td></tr>';
   }
   rows.forEach(({ s, st }) => {
@@ -2258,8 +2266,8 @@ function renderAttend() {
       '<td class="num">' + esc(st.id) + '</td>' +
       '<td>' + esc(st.name) + '</td>' +
       '<td class="num">' + esc(st.inTime || '-') + '</td>' +
-      '<td class="num">' + esc(st.outTime || '-') + '</td>' +
-      '<td>' + attStateTag(st) + '</td>' +
+      (showOut ? '<td class="num">' + esc(st.outTime || '-') + '</td>' : '') +
+      '<td>' + attStateTag(st, s.kind) + '</td>' +
       '<td class="card-sub">' + (st.assigned ? '' : '미배정') + '</td></tr>';
   });
   html += '</tbody></table></div>' +
