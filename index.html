@@ -586,6 +586,46 @@
   .link-btn .ico { color: var(--faint); font-size: 12px; }
   .link-btn:hover .ico { color: var(--accent); }
 
+  /* 내 바로가기 (시간표 위, 이 브라우저에만 저장) */
+  .myl { margin-bottom: 14px; }
+  .myl-bar { display: flex; align-items: center; gap: 10px; }
+  .myl-label { font-size: 13px; font-weight: 700; color: var(--sub); white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+  .myl-list { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: thin; }
+  .myl-tile {
+    position: relative; flex: none; display: flex; align-items: center; gap: 8px;
+    height: 40px; padding: 0 12px 0 6px; max-width: 200px;
+    border: 1px solid var(--line); border-radius: 11px; background: var(--card); box-shadow: var(--shadow);
+    color: var(--text); text-decoration: none; font-size: 14px; white-space: nowrap;
+  }
+  a.myl-tile:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+  .myl-ico { width: 28px; height: 28px; border-radius: 8px; flex: none; display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 13px; }
+  .myl-name { overflow: hidden; text-overflow: ellipsis; }
+  .myl-empty { border-style: dashed; color: var(--sub); background: none; box-shadow: none; padding: 0 14px; cursor: pointer; }
+  .myl-empty:hover { color: var(--accent-text); border-color: var(--accent); }
+  .myl-btn { flex: none; width: 34px; height: 34px; padding: 0; font-size: 16px; }
+  .myl.editing .myl-tile { cursor: grab; padding-right: 58px; }
+  .myl.editing .myl-list { flex-wrap: wrap; overflow: visible; }   /* 편집할 때는 모두 펼쳐서 끌기 쉽게 */
+  .myl.editing .myl-tile.drag { opacity: .4; }
+  .myl.editing .myl-tile.over { border-color: var(--accent); }
+  .myl-tools { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; }
+  .myl-tools button { width: 23px; height: 23px; padding: 0; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--card); color: var(--sub); font-size: 11px; cursor: pointer; }
+  .myl-tools button.del { color: var(--red); }
+  .myl-form { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 10px; align-items: end; }
+  .myl-form label { display: block; font-size: 12px; color: var(--sub); margin-bottom: 4px; }
+  .myl-form .err { grid-column: 1 / -1; color: var(--red); font-size: 12px; min-height: 0; }
+  .myl-foot { margin-top: 8px; font-size: 12px; color: var(--faint); display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .myl-foot button { border: none; background: none; padding: 0; color: var(--sub); text-decoration: underline; font-size: 12px; cursor: pointer; }
+  @media (max-width: 700px) { .myl-form { grid-template-columns: minmax(0, 1fr); } }
+  .link-btn { position: relative; }
+  .link-star { margin-left: auto; align-self: center; border: none; background: none; padding: 0 2px; font-size: 15px;
+    color: var(--faint); cursor: pointer; opacity: 0; }
+  .link-btn:hover .link-star, .link-star.on { opacity: 1; }
+  .link-star.on { color: #d9a400; }
+  @media (hover: none) { .link-star { opacity: .7; } }
+
   /* 급식 */
   .meal-tabs { display: flex; gap: 4px; }
   .meal-tab {
@@ -952,6 +992,7 @@
     <!-- 시간표 -->
     <section class="panel" data-panel="timetable">
       <div class="col wide">
+        <div id="myLinks" class="myl"></div>
         <div class="card">
           <div class="card-head">
             <h3 class="card-title">내 시간표</h3>
@@ -1367,6 +1408,7 @@ function renderAll() {
   renderToday();
   renderWeek();
   renderLinks();
+  renderMyLinks();
   renderMeal();
   renderUpcoming();
   renderCalendar();
@@ -2308,6 +2350,226 @@ function initTab() {
 
 /* ── 바로가기 ── */
 
+/* ───────────── 내 바로가기 (선생님마다, 이 브라우저에만 저장) ───────────── */
+
+const MYL_PREFIX = 'ssgh_mylinks:';
+const MYL_MAX = 40;
+const MYL_COLORS = ['#3f7cc4', '#4f9a58', '#d0812f', '#9a5bb5', '#c2556b', '#3a9a9a', '#7a6a3a', '#5f6f86'];
+const myl = { edit: false, form: null, drag: -1 };   // form: null | { idx: -1(새로) 또는 고칠 번호 }
+
+function mylKey() { return MYL_PREFIX + ((state.data && state.data.me && state.data.me.name) || ''); }
+function mylLoad() {
+  try {
+    const a = JSON.parse(localStorage.getItem(mylKey()) || '[]');
+    return Array.isArray(a) ? a.filter(x => x && x.name && /^https?:\/\//i.test(x.url)) : [];
+  } catch (e) { return []; }
+}
+function mylSave(list) {
+  try { localStorage.setItem(mylKey(), JSON.stringify(list)); return true; }
+  catch (e) { toast('이 브라우저에는 저장할 수 없습니다.', true); return false; }
+}
+function mylUrl(u) {
+  u = String(u || '').trim();
+  if (!u) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = 'https://' + u;
+  try { const x = new URL(u); return /^https?:$/.test(x.protocol) && x.hostname ? x.href : ''; } catch (e) { return ''; }
+}
+function mylSame(a, b) { return String(a || '').replace(/\/+$/, '') === String(b || '').replace(/\/+$/, ''); }
+function mylColor(name) {
+  let h = 0;
+  for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return MYL_COLORS[h % MYL_COLORS.length];
+}
+function mylStar(l) {
+  const on = mylLoad().some(x => mylSame(x.url, l.url));
+  return '<button type="button" class="link-star' + (on ? ' on' : '') + '" data-url="' + esc(l.url) + '" data-name="' + esc(l.name) +
+    '" title="' + (on ? '내 바로가기에서 빼기' : '내 바로가기에 담기') + '">' + (on ? '★' : '☆') + '</button>';
+}
+
+function renderMyLinks() {
+  const box = $('#myLinks');
+  if (!box || !state.data) return;
+  const list = mylLoad();
+  box.classList.toggle('editing', myl.edit);
+
+  let tiles;
+  if (!list.length) {
+    tiles = '<button type="button" class="myl-tile myl-empty" data-act="add">＋ 자주 쓰는 사이트를 추가하세요</button>';
+  } else {
+    tiles = list.map((l, i) => {
+      const inner = '<span class="myl-ico" style="background:' + mylColor(l.name) + '">' + esc(Array.from(l.name)[0] || '·') + '</span>' +
+        '<span class="myl-name">' + esc(l.name) + '</span>';
+      if (myl.edit) {
+        return '<div class="myl-tile" draggable="true" data-i="' + i + '" title="끌어서 순서 바꾸기">' + inner +
+          '<span class="myl-tools"><button type="button" data-act="fix" data-i="' + i + '" title="고치기">✎</button>' +
+          '<button type="button" class="del" data-act="del" data-i="' + i + '" title="지우기">✕</button></span></div>';
+      }
+      return '<a class="myl-tile" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="' + esc(l.url) + '">' + inner + '</a>';
+    }).join('');
+  }
+
+  let html = '<div class="myl-bar">' +
+    '<span class="myl-label" title="이 컴퓨터, 이 브라우저에만 저장됩니다">내 바로가기</span>' +
+    '<div class="myl-list" id="mylList">' + tiles + '</div>' +
+    (myl.edit
+      ? '<button type="button" class="btn btn-primary" data-act="done">완료</button>'
+      : '<button type="button" class="btn myl-btn" data-act="add" title="추가">＋</button>' +
+        (list.length ? '<button type="button" class="btn myl-btn" data-act="edit" title="편집 (고치기·지우기·순서)">⚙</button>' : '')) +
+    '</div>';
+
+  if (myl.form) {
+    const cur = myl.form.idx >= 0 ? list[myl.form.idx] || {} : {};
+    html += '<form class="myl-form" id="mylForm" autocomplete="off">' +
+      '<div><label for="mylName">이름</label><input class="input" id="mylName" maxlength="30" value="' + esc(cur.name || '') + '" placeholder="예: 나이스"></div>' +
+      '<div><label for="mylUrlIn">주소</label><input class="input" id="mylUrlIn" maxlength="2000" value="' + esc(cur.url || '') + '" placeholder="예: neis.go.kr"></div>' +
+      '<div style="display:flex;gap:6px"><button type="button" class="btn" data-act="cancel">취소</button>' +
+      '<button type="submit" class="btn btn-primary">' + (myl.form.idx >= 0 ? '저장' : '추가') + '</button></div>' +
+      '<div class="err" id="mylErr"></div></form>';
+  }
+
+  if (myl.edit) {
+    html += '<div class="myl-foot"><span>🔒 이 컴퓨터·이 브라우저에만 저장됩니다. 끌어서 순서를 바꿀 수 있습니다.</span>' +
+      '<button type="button" data-act="export">내보내기</button><button type="button" data-act="import">가져오기</button>' +
+      '<span>(다른 컴퓨터로 옮길 때)</span></div>';
+  }
+  box.innerHTML = html;
+  if (myl.form) setTimeout(() => { const n = $('#mylName'); if (n) n.focus(); }, 0);
+}
+
+function mylSubmit() {
+  const name = ($('#mylName').value || '').trim();
+  const url = mylUrl($('#mylUrlIn').value);
+  const err = $('#mylErr');
+  if (!name) { err.textContent = '이름을 적어 주세요.'; return; }
+  if (!url) { err.textContent = '주소가 올바르지 않습니다. 예: https://neis.go.kr'; return; }
+  const list = mylLoad();
+  if (myl.form.idx >= 0) list[myl.form.idx] = { name, url };
+  else {
+    if (list.length >= MYL_MAX) { err.textContent = '최대 ' + MYL_MAX + '개까지 저장할 수 있습니다.'; return; }
+    list.push({ name, url });
+  }
+  if (!mylSave(list)) return;
+  myl.form = null;
+  renderMyLinks();
+  renderLinks();
+}
+
+function mylExport() {
+  const list = mylLoad();
+  const blob = new Blob([JSON.stringify({ type: 'ssgh-mylinks', v: 1, links: list }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '내바로가기_' + ((state.data.me && state.data.me.name) || '') + '.json';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+function mylImport() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.json,application/json';
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      let src;
+      try { src = JSON.parse(r.result); } catch (e) { toast('내 바로가기 파일이 아닙니다.', true); return; }
+      const items = (Array.isArray(src) ? src : (src && src.links) || [])
+        .map(x => ({ name: String((x && x.name) || '').trim().slice(0, 30), url: mylUrl(x && x.url) }))
+        .filter(x => x.name && x.url);
+      if (!items.length) { toast('가져올 바로가기가 없습니다.', true); return; }
+      const list = mylLoad();
+      let added = 0;
+      items.forEach(x => {
+        if (list.length < MYL_MAX && !list.some(y => mylSame(y.url, x.url))) { list.push(x); added++; }
+      });
+      if (mylSave(list)) { renderMyLinks(); renderLinks(); toast(added + '개를 가져왔습니다.'); }
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+}
+
+function initMyLinks() {
+  const box = $('#myLinks');
+  box.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const act = b.dataset.act, i = Number(b.dataset.i);
+    if (act === 'add') { myl.form = { idx: -1 }; }
+    else if (act === 'edit') { myl.edit = true; }
+    else if (act === 'done') { myl.edit = false; myl.form = null; }
+    else if (act === 'cancel') { myl.form = null; }
+    else if (act === 'fix') { myl.form = { idx: i }; }
+    else if (act === 'del') {
+      if (!b.classList.contains('confirm')) { b.classList.add('confirm'); b.textContent = '?'; b.title = '한 번 더 누르면 지웁니다'; return; }
+      const list = mylLoad(); list.splice(i, 1); mylSave(list);
+      if (!list.length) myl.edit = false;
+      myl.form = null; renderLinks();
+    }
+    else if (act === 'export') { mylExport(); return; }
+    else if (act === 'import') { mylImport(); return; }
+    renderMyLinks();
+  });
+  box.addEventListener('submit', e => { e.preventDefault(); mylSubmit(); });
+  box.addEventListener('keydown', e => { if (e.key === 'Escape' && myl.form) { myl.form = null; renderMyLinks(); } });
+
+  // 세로 휠로도 옆으로 넘기기
+  box.addEventListener('wheel', e => {
+    const l = e.target.closest('.myl-list');
+    if (l && l.scrollWidth > l.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { l.scrollLeft += e.deltaY; e.preventDefault(); }
+  }, { passive: false });
+
+  // 끌어서 순서 바꾸기 (편집 중)
+  box.addEventListener('dragstart', e => {
+    const t = e.target.closest('.myl-tile[data-i]');
+    if (!t) return;
+    myl.drag = Number(t.dataset.i);
+    t.classList.add('drag');
+    try { e.dataTransfer.setData('text/plain', String(myl.drag)); e.dataTransfer.effectAllowed = 'move'; } catch (x) {}
+  });
+  box.addEventListener('dragover', e => {
+    const t = e.target.closest('.myl-tile[data-i]');
+    if (!t || myl.drag < 0) return;
+    e.preventDefault();
+    box.querySelectorAll('.myl-tile.over').forEach(x => x.classList.remove('over'));
+    t.classList.add('over');
+  });
+  box.addEventListener('drop', e => {
+    const t = e.target.closest('.myl-tile[data-i]');
+    if (!t || myl.drag < 0) return;
+    e.preventDefault();
+    const to = Number(t.dataset.i), from = myl.drag;
+    myl.drag = -1;
+    if (to === from) { renderMyLinks(); return; }
+    const list = mylLoad();
+    const [it] = list.splice(from, 1);
+    list.splice(to, 0, it);
+    mylSave(list);
+    renderMyLinks();
+  });
+  box.addEventListener('dragend', () => { myl.drag = -1; box.querySelectorAll('.drag,.over').forEach(x => x.classList.remove('drag', 'over')); });
+
+  // 부서별 업무의 ☆ : 내 바로가기에 담기·빼기
+  $('#linkBody').addEventListener('click', e => {
+    const s = e.target.closest('.link-star');
+    if (!s) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const list = mylLoad();
+    const k = list.findIndex(x => mylSame(x.url, s.dataset.url));
+    if (k >= 0) { list.splice(k, 1); toast('내 바로가기에서 뺐습니다.'); }
+    else {
+      if (list.length >= MYL_MAX) { toast('최대 ' + MYL_MAX + '개까지 저장할 수 있습니다.', true); return; }
+      list.push({ name: s.dataset.name.slice(0, 30), url: s.dataset.url });
+      toast('내 바로가기에 담았습니다. 시간표 화면 위에 보입니다.');
+    }
+    if (mylSave(list)) { renderLinks(); renderMyLinks(); }
+  });
+}
+
 function renderLinks() {
   const list = (state.data.links || []).filter(l => l.name && /^https?:\/\//i.test(l.url));
   $('#linkCount').textContent = list.length ? '업무 ' + list.length + '개' : '';
@@ -2341,7 +2603,7 @@ function renderLinks() {
         '<a class="link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener" title="' + esc(l.url) + '">' +
         '<span class="ico">↗</span><span>' + esc(l.name) +
         (l.note ? '<span class="link-note">' + esc(l.note) + '</span>' : '') +
-        '</span></a>').join('') +
+        '</span>' + mylStar(l) + '</a>').join('') +
       '</div>' +
     '</div>').join('') + '</div>';
 }
@@ -3046,6 +3308,7 @@ $('#ttRefresh').onclick = async () => {
   }
 };
 
+initMyLinks();
 $('#weekPrev').onclick = () => moveWeek(-1);
 $('#weekNext').onclick = () => moveWeek(1);
 $('#weekThis').onclick = () => { state.weekOffset = 0; renderWeek(); };
