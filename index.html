@@ -3003,7 +3003,6 @@ function noticeItemHtml(n, showDday) {
       '<div class="notice-title">' +
         (n.private ? '<span class="tag mine" title="나에게만 보이는 일정">🔒 나만</span>' : '') +
         (n.important ? '<span class="tag imp">중요</span>' : '') +
-        (n.category ? '<span class="tag">' + esc(n.category) + '</span>' : '') +
         '<span class="tt">' + esc(n.title) + '</span>' +
         (hasUrl(n.content) ? '<span class="link-mark" title="링크 포함">🔗</span>' : '') +
       '</div>' +
@@ -3100,7 +3099,6 @@ function openDetail(id) {
       '<span class="dday ' + (past ? '' : dd.cls) + '">' + (past ? '지남' : dd.text) + '</span>' +
       (n.private ? '<span class="tag mine">🔒 나만 보기</span>' : '') +
       (n.important ? '<span class="tag imp">중요</span>' : '') +
-      (n.category ? '<span class="tag">' + esc(n.category) + '</span>' : '') +
     '</div>' +
     '<h2>' + esc(n.title) + '</h2>' +
     '<div class="meta">' + rangeText(n) + (n.private ? ' · 나에게만 보이는 일정' : ' · 작성 ' + esc(n.author)) + (n.createdAt ? ' · ' + esc(n.createdAt.slice(0, 16)) : '') + (n.editedBy ? ' · 수정 ' + esc(n.editedBy) : '') + '</div>' +
@@ -3149,8 +3147,6 @@ function openForm(n) {
   let vis = editing ? (n.private ? 'private' : 'public') : (canPublic ? lastVis : 'private');
   if (vis === 'public' && !canPublic) vis = 'private';
   if (vis === 'private' && !canPrivate) vis = 'public';
-  const cats = CONFIG.CATEGORIES.slice();
-  if (base.category && cats.indexOf(base.category) < 0) cats.unshift(base.category);
 
   openModal(
     '<h2>' + (editing ? '일정 수정' : '일정 등록') + '</h2>' +
@@ -3166,9 +3162,6 @@ function openForm(n) {
         '<div class="form-row"><label for="fStart">시작일</label><input class="input" type="date" id="fStart" value="' + esc(base.start) + '" required></div>' +
         '<div class="form-row"><label for="fEnd">종료일</label><input class="input" type="date" id="fEnd" value="' + esc(base.end) + '" required></div>' +
       '</div>' +
-      '<div class="form-row"><label for="fCat">분류</label><select class="input" id="fCat">' +
-        cats.map(c => '<option' + (c === (base.category || '업무') ? ' selected' : '') + '>' + esc(c) + '</option>').join('') +
-      '</select></div>' +
       '<div class="form-row"><label for="fTitle">제목</label><input class="input" id="fTitle" maxlength="100" value="' + esc(base.title) + '" required></div>' +
       '<div class="form-row"><label for="fContent">내용</label><textarea class="input" id="fContent" maxlength="2000">' + esc(base.content) + '</textarea></div>' +
       '<label class="check"><input type="checkbox" id="fImp"' + (base.important ? ' checked' : '') + '> 중요 표시</label>' +
@@ -3191,7 +3184,7 @@ function openForm(n) {
     const notice = {
       start: $('#fStart').value,
       end: $('#fEnd').value || $('#fStart').value,
-      category: $('#fCat').value,
+      category: base.category || '',   // 분류는 쓰지 않음 (예전 값은 그대로 둠)
       title: $('#fTitle').value.trim(),
       content: $('#fContent').value.trim(),
       important: $('#fImp').checked,
