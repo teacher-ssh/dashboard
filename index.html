@@ -722,6 +722,20 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .chip.imp { background: var(--red-soft); color: var(--red); }
+  .chip.mine { background: transparent; color: var(--sub); border: 1px dashed var(--faint); padding: 0 4px; }
+  .tag.mine { background: transparent; border: 1px dashed var(--faint); color: var(--sub); }
+  .notice-item.mine .notice-title .tt { color: var(--sub); }
+  .nf-seg { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; margin: 2px 0 8px; }
+  .nf-seg button { flex: 1; border: none; background: var(--card); color: var(--sub); height: 32px; padding: 0 10px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .nf-seg button + button { border-left: 1px solid var(--line); }
+  .nf-seg button.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .vis-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .vis-pick label { display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
+    cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text); margin: 0; }
+  .vis-pick label small { display: block; font-weight: 400; font-size: 12px; color: var(--faint); margin-top: 2px; }
+  .vis-pick input { margin-top: 3px; accent-color: var(--accent); }
+  .vis-pick label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+  .vis-pick label.off { opacity: .5; cursor: not-allowed; }
   .chip-more { font-size: 11px; color: var(--faint); margin-top: 1px; padding-left: 4px; }
   .day-panel { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
   .day-panel-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
@@ -902,6 +916,7 @@
     .card { padding: 16px; }
     .cal-cell { min-height: 54px; padding: 3px; }
     .chip { font-size: 0; height: 5px; padding: 0; margin-top: 3px; }
+    .chip.mine { border-width: 0; box-shadow: inset 0 0 0 1px var(--faint); }
     .chip-more { display: none; }
     .form-2 { grid-template-columns: 1fr; }
     .today-list li { grid-template-columns: 44px 84px 1fr; }
@@ -1035,7 +1050,10 @@
           <div class="card-head">
             <h3 class="card-title">다가오는 일정</h3>
             <span class="grow"></span>
-            <button class="btn btn-primary hidden" id="addBtn" type="button">+ 공지 등록</button>
+            <button class="btn btn-primary" id="addBtn" type="button">+ 일정 등록</button>
+          </div>
+          <div class="nf-seg" id="noticeFilter" role="group" aria-label="일정 보기">
+            <button type="button" data-f="all">전체</button><button type="button" data-f="school">학교 일정</button><button type="button" data-f="mine">🔒 내 일정</button>
           </div>
           <ul class="notice-list" id="upcomingList"></ul>
         </div>
@@ -1402,7 +1420,6 @@ function renderAll() {
   const me = state.data.me;
   $('#meName').textContent = me.name + ' 선생님';
   $('#meDept').textContent = me.dept || '';
-  $('#addBtn').classList.toggle('hidden', !me.canPost);
   $('#ttRefresh').classList.toggle('hidden', !me.canPost);
   renderClock();
   renderToday();
@@ -1546,7 +1563,8 @@ function renderMini() {
   }
 
   // 오늘 일정 (중요한 것 먼저, 3개까지)
-  const ns = notices().filter(n => n.start <= today && n.end >= today)
+  // 개인 일정은 '내 메모'를 켠 기기에서만 (교실 화면에 띄울 수 있으므로)
+  const ns = notices().filter(n => n.start <= today && n.end >= today && (!n.private || miniMemoOn()))
     .sort((a, b) => (a.important === b.important ? 0 : a.important ? -1 : 1));
   $('#miniNotices').innerHTML = ns.length
     ? ns.slice(0, 3).map(n => '<div class="mini-line"><span class="x">' +
@@ -2950,6 +2968,22 @@ const SHARED_CLS_NAME = '전체';
 
 function notices() { return state.data.notices || []; }
 
+// 일정 보기: 전체 / 학교(전체 공개) / 내 일정(나만 보기) — 기기마다 기억
+const NF_KEY = 'ssgh_notice_filter';
+function noticeFilter() { try { return localStorage.getItem(NF_KEY) || 'all'; } catch (e) { return 'all'; } }
+function setNoticeFilter(f) {
+  try { localStorage.setItem(NF_KEY, f); } catch (e) {}
+  renderUpcoming(); renderCalendar(); renderDayList();
+}
+function shownNotices() {
+  const f = noticeFilter();
+  return notices().filter(n => f === 'all' || (f === 'mine' ? n.private : !n.private));
+}
+function renderNoticeFilter() {
+  const f = noticeFilter();
+  document.querySelectorAll('#noticeFilter button').forEach(b => b.classList.toggle('on', b.dataset.f === f));
+}
+
 function ddayInfo(n) {
   const today = todayStr();
   if (n.start <= today && n.end >= today) {
@@ -2963,22 +2997,24 @@ function noticeItemHtml(n, showDday) {
   const dd = ddayInfo(n);
   const today = todayStr();
   const past = n.end < today;
-  return '<li class="notice-item" data-id="' + esc(n.id) + '">' +
+  return '<li class="notice-item' + (n.private ? ' mine' : '') + '" data-id="' + esc(n.id) + '">' +
     (showDday ? '<span class="dday ' + (past ? '' : dd.cls) + '">' + (past ? '지남' : dd.text) + '</span>' : '') +
     '<div class="notice-body">' +
       '<div class="notice-title">' +
+        (n.private ? '<span class="tag mine" title="나에게만 보이는 일정">🔒 나만</span>' : '') +
         (n.important ? '<span class="tag imp">중요</span>' : '') +
         (n.category ? '<span class="tag">' + esc(n.category) + '</span>' : '') +
         '<span class="tt">' + esc(n.title) + '</span>' +
         (hasUrl(n.content) ? '<span class="link-mark" title="링크 포함">🔗</span>' : '') +
       '</div>' +
-      '<div class="notice-meta">' + rangeText(n) + ' · ' + esc(n.author) + '</div>' +
+      '<div class="notice-meta">' + rangeText(n) + ' · ' + (n.private ? '나만 보기' : esc(n.author)) + '</div>' +
     '</div></li>';
 }
 
 function renderUpcoming() {
   const today = todayStr();
-  const list = notices()
+  renderNoticeFilter();
+  const list = shownNotices()
     .filter(n => n.end >= today)
     .sort((a, b) => {
       const ao = a.start <= today ? 0 : 1;
@@ -2992,7 +3028,7 @@ function renderUpcoming() {
 
   $('#upcomingList').innerHTML = list.length
     ? list.map(n => noticeItemHtml(n, true)).join('')
-    : '<li class="empty-msg">예정된 일정이 없습니다.</li>';
+    : '<li class="empty-msg">' + (noticeFilter() === 'mine' ? '예정된 내 일정이 없습니다. [+ 일정 등록]에서 "나만 보기"로 추가해 보세요.' : '예정된 일정이 없습니다.') + '</li>';
 }
 
 function renderCalendar() {
@@ -3002,7 +3038,7 @@ function renderCalendar() {
   const first = new Date(y, m, 1);
   const startDate = new Date(y, m, 1 - first.getDay());
   const today = todayStr();
-  const all = notices();
+  const all = shownNotices();
 
   let html = DOW.map((w, i) => '<div class="cal-dow' + (i === 0 ? ' sun' : i === 6 ? ' sat' : '') + '">' + w + '</div>').join('');
 
@@ -3022,7 +3058,7 @@ function renderCalendar() {
 
     html += '<div class="' + classes.join(' ') + '" data-date="' + s + '">' +
       '<span class="cal-num">' + d.getDate() + '</span>' +
-      dayNotices.slice(0, 2).map(n => '<span class="chip' + (n.important ? ' imp' : '') + '" title="' + esc(n.title) + '">' + esc(n.title) + '</span>').join('') +
+      dayNotices.slice(0, 2).map(n => '<span class="chip' + (n.private ? ' mine' : n.important ? ' imp' : '') + '" title="' + (n.private ? '🔒 ' : '') + esc(n.title) + '">' + (n.private ? '🔒' : '') + esc(n.title) + '</span>').join('') +
       (dayNotices.length > 2 ? '<div class="chip-more">+' + (dayNotices.length - 2) + '</div>' : '') +
       '</div>';
   }
@@ -3033,7 +3069,7 @@ function renderDayList() {
   const s = state.selDate;
   const d = parseYmd(s);
   $('#dayTitle').textContent = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + DOW[d.getDay()] + ') 일정';
-  const list = notices().filter(n => n.start <= s && n.end >= s);
+  const list = shownNotices().filter(n => n.start <= s && n.end >= s);
   $('#dayList').innerHTML = list.length
     ? list.map(n => noticeItemHtml(n, false)).join('')
     : '<li class="empty-msg">등록된 일정이 없습니다.</li>';
@@ -3054,19 +3090,20 @@ function openDetail(id) {
   const n = notices().find(x => x.id === id);
   if (!n) return;
   const me = state.data.me;
-  const canEdit = !!me.canPost;                       // 공지 작성 권한이 있으면 누구 일정이든 수정
-  const mine = canEdit && n.author === me.name;       // 삭제는 작성자만
+  const canEdit = n.private || !!me.canPost;          // 개인 일정은 본인, 전체 일정은 공지 작성 권한이 있으면 누구 것이든 수정
+  const mine = n.private || (canEdit && n.author === me.name);   // 삭제는 작성자만
   const dd = ddayInfo(n);
   const past = n.end < todayStr();
 
   openModal(
     '<div class="notice-title" style="margin-bottom:8px">' +
       '<span class="dday ' + (past ? '' : dd.cls) + '">' + (past ? '지남' : dd.text) + '</span>' +
+      (n.private ? '<span class="tag mine">🔒 나만 보기</span>' : '') +
       (n.important ? '<span class="tag imp">중요</span>' : '') +
       (n.category ? '<span class="tag">' + esc(n.category) + '</span>' : '') +
     '</div>' +
     '<h2>' + esc(n.title) + '</h2>' +
-    '<div class="meta">' + rangeText(n) + ' · 작성 ' + esc(n.author) + (n.createdAt ? ' · ' + esc(n.createdAt.slice(0, 16)) : '') + (n.editedBy ? ' · 수정 ' + esc(n.editedBy) : '') + '</div>' +
+    '<div class="meta">' + rangeText(n) + (n.private ? ' · 나에게만 보이는 일정' : ' · 작성 ' + esc(n.author)) + (n.createdAt ? ' · ' + esc(n.createdAt.slice(0, 16)) : '') + (n.editedBy ? ' · 수정 ' + esc(n.editedBy) : '') + '</div>' +
     '<div class="content">' + (n.content ? linkify(n.content) : '<span style="color:var(--faint)">내용 없음</span>') + '</div>' +
     '<div class="modal-actions">' +
       (canEdit ? '<div class="left"><button class="btn" id="mEdit" type="button">수정</button>' + (mine ? '<button class="btn btn-danger" id="mDel" type="button">삭제</button>' : '') + '</div>' : '') +
@@ -3090,7 +3127,7 @@ function openDetail(id) {
         state.data.notices = j.notices;
         closeModal();
         renderAll();
-        toast('공지를 삭제했습니다.');
+        toast('일정을 삭제했습니다.');
       } catch (e) {
         handleActionError(e);
         del.disabled = false;
@@ -3101,14 +3138,30 @@ function openDetail(id) {
 
 function openForm(n) {
   const editing = !!n;
+  const me = state.data.me;
   const base = n || { start: state.selDate || todayStr(), end: state.selDate || todayStr(), category: '', title: '', content: '', important: false };
+  // 공개 범위: 고칠 때는 지금 상태, 새로 쓸 때는 지난번 선택(처음엔 나만 보기). 권한이 없으면 나만 보기만
+  let lastVis = 'private';
+  try { lastVis = localStorage.getItem('ssgh_notice_vis') || 'private'; } catch (e) {}
+  const othersPublic = editing && !n.private && n.author !== me.name;   // 남이 올린 전체 일정
+  const canPublic = !!me.canPost;
+  const canPrivate = !othersPublic;
+  let vis = editing ? (n.private ? 'private' : 'public') : (canPublic ? lastVis : 'private');
+  if (vis === 'public' && !canPublic) vis = 'private';
+  if (vis === 'private' && !canPrivate) vis = 'public';
   const cats = CONFIG.CATEGORIES.slice();
   if (base.category && cats.indexOf(base.category) < 0) cats.unshift(base.category);
 
   openModal(
-    '<h2>' + (editing ? '공지 수정' : '공지 등록') + '</h2>' +
-    '<div class="meta">' + (editing && n.author && n.author !== state.data.me.name ? esc(n.author) + ' 선생님이 올린 일정입니다. 고친 사람은 기록에 남습니다.' : '등록한 공지는 모든 교직원 화면에 표시됩니다.') + '</div>' +
+    '<h2>' + (editing ? '일정 수정' : '일정 등록') + '</h2>' +
+    (othersPublic ? '<div class="meta">' + esc(n.author) + ' 선생님이 올린 일정입니다. 고친 사람은 기록에 남습니다.</div>' : '') +
     '<form id="nForm" autocomplete="off">' +
+      '<div class="form-row"><label>누가 보나요</label><div class="vis-pick">' +
+        '<label class="' + (canPublic ? '' : 'off') + '"><input type="radio" name="fVis" value="public"' + (vis === 'public' ? ' checked' : '') + (canPublic ? '' : ' disabled') + '>' +
+          '<span>전체 일정<small>' + (canPublic ? '모든 교직원 화면에 보입니다' : '공지 작성 권한이 있어야 합니다') + '</small></span></label>' +
+        '<label class="' + (canPrivate ? '' : 'off') + '"><input type="radio" name="fVis" value="private"' + (vis === 'private' ? ' checked' : '') + (canPrivate ? '' : ' disabled') + '>' +
+          '<span>🔒 나만 보기<small>' + (canPrivate ? '내 화면에만 보입니다' : '다른 선생님이 올린 일정입니다') + '</small></span></label>' +
+      '</div></div>' +
       '<div class="form-2">' +
         '<div class="form-row"><label for="fStart">시작일</label><input class="input" type="date" id="fStart" value="' + esc(base.start) + '" required></div>' +
         '<div class="form-row"><label for="fEnd">종료일</label><input class="input" type="date" id="fEnd" value="' + esc(base.end) + '" required></div>' +
@@ -3118,7 +3171,7 @@ function openForm(n) {
       '</select></div>' +
       '<div class="form-row"><label for="fTitle">제목</label><input class="input" id="fTitle" maxlength="100" value="' + esc(base.title) + '" required></div>' +
       '<div class="form-row"><label for="fContent">내용</label><textarea class="input" id="fContent" maxlength="2000">' + esc(base.content) + '</textarea></div>' +
-      '<label class="check"><input type="checkbox" id="fImp"' + (base.important ? ' checked' : '') + '> 중요 공지로 표시</label>' +
+      '<label class="check"><input type="checkbox" id="fImp"' + (base.important ? ' checked' : '') + '> 중요 표시</label>' +
       '<div class="form-err" id="fErr"></div>' +
       '<div class="modal-actions">' +
         '<button class="btn" id="fCancel" type="button">취소</button>' +
@@ -3141,7 +3194,8 @@ function openForm(n) {
       category: $('#fCat').value,
       title: $('#fTitle').value.trim(),
       content: $('#fContent').value.trim(),
-      important: $('#fImp').checked
+      important: $('#fImp').checked,
+      private: (document.querySelector('input[name=fVis]:checked') || {}).value === 'private'
     };
     const err = $('#fErr');
     if (!notice.start) { err.textContent = '시작일을 입력해 주세요.'; return; }
@@ -3161,13 +3215,18 @@ function openForm(n) {
         j = await api('addNotice', { key: state.key, notice: notice });
       }
       state.data.notices = j.notices;
+      if (!editing) { try { localStorage.setItem('ssgh_notice_vis', notice.private ? 'private' : 'public'); } catch (e) {} }
+      // 지금 보기에서 안 보이는 쪽으로 저장했으면 전체 보기로
+      if ((noticeFilter() === 'mine' && !notice.private) || (noticeFilter() === 'school' && notice.private)) {
+        try { localStorage.setItem(NF_KEY, 'all'); } catch (e) {}
+      }
       closeModal();
       state.selDate = notice.start;
       const sd = parseYmd(notice.start);
       state.calYear = sd.getFullYear();
       state.calMonth = sd.getMonth();
       renderAll();
-      toast(editing ? '공지를 수정했습니다.' : '공지를 등록했습니다.');
+      toast((editing ? '일정을 수정했습니다.' : '일정을 등록했습니다.') + (notice.private ? ' (나만 보기)' : ''));
     } catch (e) {
       if (AUTH_ERRORS.indexOf(e.code) >= 0) { handleActionError(e); return; }
       err.textContent = e.message;
@@ -3210,6 +3269,10 @@ $('#installBtn').onclick = async () => {
 $('#logoutBtn').onclick = logout;
 $('#retryBtn').onclick = boot;
 $('#addBtn').onclick = () => openForm(null);
+$('#noticeFilter').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-f]');
+  if (b) setNoticeFilter(b.dataset.f);
+});
 
 $('#calPrev').onclick = () => { state.calMonth--; if (state.calMonth < 0) { state.calMonth = 11; state.calYear--; } renderCalendar(); };
 $('#calNext').onclick = () => { state.calMonth++; if (state.calMonth > 11) { state.calMonth = 0; state.calYear++; } renderCalendar(); };
