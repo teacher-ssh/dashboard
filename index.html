@@ -844,6 +844,7 @@
   .att-kind { display: inline-block; font-size: 11px; font-weight: 700; color: #fff; background: var(--g, #5f6f86);
     border-radius: 4px; padding: 1px 6px; margin-right: 6px; vertical-align: 2px; }
   .att-bad { color: var(--red); }
+  .att-no { color: var(--faint); width: 36px; }
   .att-warn { color: var(--warn-text); }
   .att-wrap { overflow: auto; max-height: calc(100vh - 330px); min-height: 200px; border-top: 1px solid var(--line); }
   table.atttable { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -2180,14 +2181,14 @@ function renderAttRange() {
     '<button class="btn" id="attBack" type="button">하루 보기로</button></div>';
 
   html += '<div class="att-wrap" style="max-height:45vh"><table class="atttable"><thead><tr>' +
-    '<th>학번</th><th>이름</th><th>출석</th><th>지각</th><th>조퇴</th><th>결석</th><th>퇴실누락</th></tr></thead><tbody>';
+    '<th class="num">#</th><th>학번</th><th>이름</th><th>출석</th><th>지각</th><th>조퇴</th><th>결석</th><th>퇴실누락</th></tr></thead><tbody>';
   if (!list.length) {
-    html += '<tr><td colspan="7" class="empty-msg">' + (onlyMiss ? '결석한 학생이 없습니다.' : '이 기간에 기록이 없습니다.') + '</td></tr>';
+    html += '<tr><td colspan="8" class="empty-msg">' + (onlyMiss ? '결석한 학생이 없습니다.' : '이 기간에 기록이 없습니다.') + '</td></tr>';
   }
-  list.forEach(s => {
+  list.forEach((s, i) => {
     const z = (n, cls) => n ? '<span class="' + cls + '">' + n + '</span>' : '<span class="card-sub">0</span>';
     html += '<tr class="pick' + (sel && sel.id === s.id ? ' on' : '') + '" data-stu="' + esc(s.id) + '">' +
-      '<td class="num">' + esc(s.id) + '</td><td>' + esc(s.name) + '</td>' +
+      '<td class="num att-no">' + (i + 1) + '</td><td class="num">' + esc(s.id) + '</td><td>' + esc(s.name) + '</td>' +
       '<td class="num">' + s.n + '</td>' +
       '<td class="num">' + z(s.late, 'att-warn') + '</td>' +
       '<td class="num">' + z(s.early, 'att-warn') + '</td>' +
@@ -2314,14 +2315,15 @@ function renderAttend() {
   const selS = list.find(s => s.id === state.attSel);
   const showOut = showSess || !(selS && selS.kind === 'slat');   // 공강은 퇴실이 없음
   html += '<div class="att-wrap"><table class="atttable"><thead><tr>' +
-    (showSess ? '<th>타임</th>' : '') +
+    '<th class="num">#</th>' + (showSess ? '<th>타임</th>' : '') +
     '<th>학번</th><th>이름</th><th>입실</th>' + (showOut ? '<th>퇴실</th>' : '') + '<th>상태</th><th>비고</th></tr></thead><tbody>';
   if (!rows.length) {
-    html += '<tr><td colspan="' + (5 + (showSess ? 1 : 0) + (showOut ? 1 : 0)) + '" class="empty-msg">' +
+    html += '<tr><td colspan="' + (6 + (showSess ? 1 : 0) + (showOut ? 1 : 0)) + '" class="empty-msg">' +
       (q ? '찾는 학생이 없습니다.' : onlyMiss ? '미입실·결석 학생이 없습니다.' : '배정되거나 출석한 학생이 없습니다.') + '</td></tr>';
   }
-  rows.forEach(({ s, st }) => {
+  rows.forEach(({ s, st }, i) => {
     html += '<tr class="st-' + st.state + '">' +
+      '<td class="num att-no">' + (i + 1) + '</td>' +
       (showSess ? '<td>' + esc(s.name) + '</td>' : '') +
       '<td class="num">' + esc(st.id) + '</td>' +
       '<td>' + esc(st.name) + '</td>' +
