@@ -821,7 +821,13 @@
   table.dutytable tr.weekend td.dcol { color: var(--red); }
   table.dutytable tr.today { background: var(--accent-soft); }
   table.dutytable td .who { display: block; line-height: 1.5; }
-  table.dutytable td .who.me { color: var(--red); font-weight: 700; text-align: center; line-height: 1.5; }
+  /* 본인 근무 : 붉은 칩으로 (시간표 메모 칩처럼) */
+  table.dutytable td .who.me {
+    display: block; width: fit-content; margin: 2px auto; padding: 1px 8px;
+    background: var(--red); color: #fff; font-weight: 700; text-align: center; line-height: 1.5;
+    border-radius: 6px; box-shadow: 0 0 0 2px var(--duty-bg);
+  }
+  table.dutytable td .who.me .pl { color: #fff; opacity: .85; }
   table.dutytable td .pl { font-size: 11px; color: var(--sub); }
   .duty-pop { list-style: none; margin: 14px 0 4px; padding: 0; }
   .duty-pop li { display: flex; gap: 12px; align-items: baseline; padding: 10px 12px; border-radius: 10px;
@@ -1965,7 +1971,7 @@ async function renderDutyTable(force) {
   });
 
   html += '</tbody></table></div>' +
-    '<div class="tt-note">본인 근무는 붉게 표시됩니다. · 근무가 없는 날은 나오지 않습니다.</div>';
+    '<div class="tt-note">본인 근무는 붉은 칸으로 표시됩니다. · 근무가 없는 날은 나오지 않습니다.</div>';
   body.innerHTML = html;
 }
 
