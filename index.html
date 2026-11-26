@@ -454,6 +454,11 @@
   .btn-danger:hover { background: var(--red-soft); }
   .btn-danger.confirm { background: var(--red); color: #fff; border-color: var(--red); }
   .btn:disabled { opacity: .55; cursor: default; }
+  a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+  [data-panel="notice"] .card-head .btn, [data-panel="notice"] .card-head .card-title { white-space: nowrap; }
+  @media (max-width: 560px) { #gcalAdd .gc-long { display: none; } }
+  .gc-note { font-size: 12px; color: var(--sub); background: var(--accent-soft); border-radius: 8px; padding: 7px 10px; margin: 0 0 10px; line-height: 1.5; }
+  .gc-note b { color: var(--accent-text); }
 
   /* 오늘 상태 */
   .now-box {
@@ -1073,11 +1078,15 @@
           <div class="card-head">
             <h3 class="card-title">다가오는 일정</h3>
             <span class="grow"></span>
+            <a class="btn" id="gcalAdd" target="_blank" rel="noopener"
+               href="https://calendar.google.com/calendar/u/0?cid=Y19hYTFlMjUxMjBhN2IwNzEwOTc4MjhkMTAyYzk5ZmM0NmRmZmE1NjY1ZDRkYjVkMWZkNTg1ZWMxYzBiYTgxZDVjQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20"
+               title="학교 일정이 들어가는 '숭신고(교직원)' 캘린더를 내 구글 캘린더에 추가합니다 (학교 계정으로 로그인한 상태에서 한 번만)">📅&nbsp;<span class="gc-long">구글&nbsp;</span>캘린더<span class="gc-long">에 추가</span></a>
             <button class="btn btn-primary" id="addBtn" type="button">+ 일정 등록</button>
           </div>
           <div class="nf-seg" id="noticeFilter" role="group" aria-label="일정 보기">
             <button type="button" data-f="all">전체</button><button type="button" data-f="school">학교 일정</button><button type="button" data-f="mine">🔒 내 일정</button>
           </div>
+          <p class="gc-note"><b>📅 구글 캘린더 추가</b> 버튼을 한 번 누르면 '숭신고(교직원)' 캘린더가 내 구글 캘린더에 추가되어, 교무실의 <b>학교 일정</b>이 자동으로 들어갑니다. 등록·수정·삭제도 바로 반영됩니다. (🔒 내 일정은 들어가지 않습니다)</p>
           <ul class="notice-list" id="upcomingList"></ul>
         </div>
       </div>
